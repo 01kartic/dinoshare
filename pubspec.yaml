@@ -1,0 +1,64 @@
+name: dinoshare
+description: "Local Area File Sharing — cross-platform LAN transfer app."
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inset_shadow: ^2.0.3
+  forui: ^0.21.1
+  hugeicons: ^1.1.6
+  macos_window_utils: ^1.9.1
+
+  # Networking & crypto
+  cryptography: ^2.7.0
+  cryptography_flutter: ^2.3.2
+
+  # Storage & file handling
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  file_picker: ^8.1.4
+  mime: ^2.0.0
+  open_filex: ^4.7.0
+  url_launcher: ^6.1.10
+
+  # Device info & notifications
+  device_info_plus: ^10.1.0
+  flutter_local_notifications: ^18.0.1
+  flutter_launcher_icons: ^0.14.4
+
+  # Permissions
+  permission_handler: ^11.3.1
+  fc_native_video_thumbnail: ^2.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  assets:
+    - assets/android/
+    - assets/ios/
+    - assets/macos/
+    - assets/web/
+    - assets/windows/
+    - assets/linux/
+
+flutter_icons:
+  android: true
+  ios: true
+  windows:
+    generate: true
+    image_path: "assets/windows/app_icon.png"
+  min_sdk_android: 21
+  image_path: "assets/android/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/android/icon_foreground.png"
+  image_path_ios: "assets/ios/app_icon.png"
+  image_path_macos: "assets/macos/app_icon.png"

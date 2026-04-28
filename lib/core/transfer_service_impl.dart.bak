@@ -1,0 +1,1635 @@
+part of 'transfer_service.dart';
+
+String _getDeviceTypeString() {
+  if (Platform.isAndroid) return 'android';
+  if (Platform.isIOS) return 'ios';
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isWindows) return 'windows';
+  if (Platform.isLinux) return 'linux';
+  return 'unknown';
+}
+
+class dinoshareTransferService {
+  dinoshareTransferService._();
+  static final dinoshareTransferService instance = dinoshareTransferService._();
+
+  // ── Public observables ───────────────────────────────────────────────────
+  final ValueNotifier<List<PeerDevice>> discoveredPeers = ValueNotifier(
+    <PeerDevice>[],
+  );
+  final ValueNotifier<IncomingTransferRequest?> incomingRequest = ValueNotifier(
+    null,
+  );
+  final ValueNotifier<TransferSession?> activeSession = ValueNotifier(null);
+
+  void Function(TransferSession)? onTransferComplete;
+
+  // ── Runtime settings ─────────────────────────────────────────────────────
+  bool _fullPowerMode = false;
+  String _deviceName = 'Dino Device';
+  String _deviceId = '';
+  String _receiveBasePath = '';
+
+  void setFullPowerMode(bool enabled) => _fullPowerMode = enabled;
+
+  // ── Computed constants based on power mode ───────────────────────────────
+  int get _socketBuffer =>
+      _fullPowerMode ? _kPowerSocketBuffer : _kNormalSocketBuffer;
+  int get _parallelConns =>
+      _fullPowerMode ? _kPowerParallelConns : _kNormalParallelConns;
+  int get _largeFileThreshold =>
+      _fullPowerMode ? _kPowerLargeFileThreshold : _kNormalLargeFileThreshold;
+  int get _parallelChunkSize =>
+      _fullPowerMode ? _kPowerParallelChunkSize : _kNormalParallelChunkSize;
+  int get _flushThreshold =>
+      Platform.isWindows
+          ? (_fullPowerMode
+              ? _kPowerFlushThreshold * 2
+              : _kNormalFlushThreshold * 2)
+          : (_fullPowerMode ? _kPowerFlushThreshold : _kNormalFlushThreshold);
+  int get _ioChunkSize =>
+      Platform.isWindows
+          ? (_fullPowerMode ? _kPowerChunkSize * 2 : _kNormalChunkSize * 2)
+          : (_fullPowerMode ? _kPowerChunkSize : _kNormalChunkSize);
+
+  // ── Internal state ───────────────────────────────────────────────────────
+  final Map<String, PeerDevice> _peerMap = {};
+  final Set<Socket> _activeSockets = {};
+  final Set<InternetAddress> _discoveryTargets = {};
+  final Map<String, _PendingIncoming> _pendingIncoming = {};
+  final Map<String, Set<int>> _chunkedFileProgress = {};
+
+  RawDatagramSocket? _discoverySocket;
+  ServerSocket? _controlServer;
+  Timer? _discoverTimer;
+  Timer? _peerPruneTimer;
+  Timer? _speedTimer;
+  Timer? _etaTimer;
+
+  bool _initialized = false;
+  bool _discovering = false;
+  bool _receivingEnabled = false;
+  bool _multicastJoined = false;
+  bool _localStopRequested = false;
+
+  int _controlPort = 0;
+
+  // Speed tracking
+  DateTime _lastByteAt = DateTime.now();
+  DateTime _lastSpeedSampleAt = DateTime.now();
+  int _lastSpeedBytes = 0;
+
+  // ETA tracking
+  DateTime? _etaLastCalcAt;
+  int? _etaLastRemainingBytes;
+
+  // Per-session crypto
+  _SessionCrypto? _sessionCrypto;
+  SecretKey? _sessionKey;
+
+  // Per-session peer endpoint (so we can signal stop even after sockets die).
+  InternetAddress? _peerAddress;
+  int? _peerControlPort;
+
+  // Progress helpers
+  String? _currentTopLevelName;
+  int _topLevelStartBytes = 0;
+  List<TransferFileEntry> _currentTransferFiles = [];
+
+  final FlutterLocalNotificationsPlugin _notifications =
+      FlutterLocalNotificationsPlugin();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Initialisation
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    // The cryptography_flutter import auto-registers native AES-GCM/X25519
+    // implementations on Android/iOS/macOS so crypto stops blocking the UI.
+    _deviceId = _buildDeviceId();
+    _receiveBasePath = await defaultReceiveDirectory();
+    _controlPort = await _pickFreePort();
+
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinInit = DarwinInitializationSettings();
+    await _notifications.initialize(
+      const InitializationSettings(
+        android: androidInit,
+        iOS: darwinInit,
+        macOS: darwinInit,
+      ),
+    );
+
+    if (Platform.isAndroid) {
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission();
+    }
+    if (Platform.isIOS || Platform.isMacOS) {
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    }
+  }
+
+  Future<int> _pickFreePort() async {
+    final rng = Random.secure();
+    for (var i = 0; i < 30; i++) {
+      final port = 44001 + rng.nextInt(3998); // 44001 – 47999
+      try {
+        final s = await ServerSocket.bind(
+          InternetAddress.anyIPv4,
+          port,
+          shared: false,
+        );
+        await s.close();
+        return port;
+      } catch (_) {}
+    }
+    // Fallback — let OS assign
+    final s = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    final port = s.port;
+    await s.close();
+    return port;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Default receive directory
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<String> defaultReceiveDirectory() async {
+    Future<String> ensureDir(String path) async {
+      final dir = Directory(path);
+      if (!dir.existsSync()) await dir.create(recursive: true);
+      return path;
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        return await ensureDir('/storage/emulated/0/Download/Dino');
+      } catch (_) {
+        final appDir = await getExternalStorageDirectory();
+        return await ensureDir(p.join(appDir?.path ?? '/tmp', 'Dino'));
+      }
+    }
+    if (Platform.isIOS) {
+      final docs = await getApplicationDocumentsDirectory();
+      return await ensureDir(p.join(docs.path, 'Dino Received'));
+    }
+    final home =
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '';
+    if (home.isNotEmpty) {
+      return await ensureDir(p.join(home, 'Downloads', 'Dino'));
+    }
+    return await ensureDir(
+      p.join(Directory.systemTemp.path, 'dinoshare-downloads'),
+    );
+  }
+
+  Future<void> setReceiveBasePath(String? customPath) async {
+    _receiveBasePath =
+        (customPath?.trim().isNotEmpty == true)
+            ? customPath!.trim()
+            : await defaultReceiveDirectory();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Discovery
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> startDiscovery() async {
+    await initialize();
+    _discovering = true;
+    await _refreshDiscoveryTargets();
+    await _ensureDiscoverySocket();
+    await _joinMulticast();
+    _sendDiscoverPing();
+    _discoverTimer?.cancel();
+    _discoverTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _sendDiscoverPing(),
+    );
+    _peerPruneTimer?.cancel();
+    _peerPruneTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final now = DateTime.now();
+      _peerMap.removeWhere(
+        (_, peer) => now.difference(peer.lastSeen) > const Duration(seconds: 6),
+      );
+      discoveredPeers.value =
+          _peerMap.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+    });
+  }
+
+  Future<void> stopDiscovery() async {
+    _discovering = false;
+    _discoverTimer?.cancel();
+    _peerPruneTimer?.cancel();
+    _discoverTimer = null;
+    _peerPruneTimer = null;
+    _peerMap.clear();
+    discoveredPeers.value = [];
+    if (_multicastJoined && !_receivingEnabled) await _leaveMulticast();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Receiver
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> startReceiver({required String deviceName}) async {
+    await initialize();
+    _deviceName = deviceName.trim().isEmpty ? 'Dino Device' : deviceName.trim();
+    if (_receivingEnabled && _controlServer != null) return; // idempotent
+    if (_controlServer == null) {
+      _controlPort = await _pickFreePort();
+      _controlServer = await ServerSocket.bind(
+        InternetAddress.anyIPv4,
+        _controlPort,
+        shared: true,
+      );
+      _controlServer!.listen(_handleControlConnection);
+    }
+    _receivingEnabled = true;
+    await _refreshDiscoveryTargets();
+    await _ensureDiscoverySocket();
+    await _joinMulticast();
+    _discoverySocket?.readEventsEnabled = true;
+  }
+
+  Future<void> stopReceiver() async {
+    _receivingEnabled = false;
+    await _controlServer?.close();
+    _controlServer = null;
+    for (final pending in _pendingIncoming.values) {
+      pending.socket.destroy();
+    }
+    _pendingIncoming.clear();
+    incomingRequest.value = null;
+    if (_multicastJoined && !_discovering) await _leaveMulticast();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sending
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<TransferStatus> sendTransferRequest({
+    required PeerDevice peer,
+    required TransferSelection selection,
+    required String senderName,
+  }) async {
+    _localStopRequested = false;
+    if (selection.files.isEmpty) return TransferStatus.failed;
+
+    final sessionId = _buildSessionId();
+    final started = DateTime.now();
+
+    // Generate ephemeral crypto identity for this session.
+    _sessionCrypto = await _generateCrypto();
+
+    // Build initial progress items (grouped by top-level name).
+    final topLevelSizes = <String, int>{};
+    final topLevelPaths = <String, String>{};
+    for (final f in selection.files) {
+      topLevelSizes[f.topLevelName] =
+          (topLevelSizes[f.topLevelName] ?? 0) + f.sizeBytes;
+      if (!topLevelPaths.containsKey(f.topLevelName)) {
+        if (f.topLevelName == f.name) {
+          topLevelPaths[f.topLevelName] = f.sourcePath;
+        } else {
+          final depth = p.split(f.relativePath).length;
+          var dir = f.sourcePath;
+          for (var i = 0; i < depth; i++) {
+            dir = p.dirname(dir);
+          }
+          topLevelPaths[f.topLevelName] = p.join(dir, f.topLevelName);
+        }
+      }
+    }
+    final allItems =
+        topLevelSizes.entries
+            .map(
+              (e) => TransferItemProgress(
+                name: e.key,
+                sizeBytes: e.value,
+                bytesTransferred: 0,
+                path: topLevelPaths[e.key],
+              ),
+            )
+            .toList();
+
+    activeSession.value = TransferSession(
+      sessionId: sessionId,
+      role: TransferRole.sending,
+      status: TransferStatus.requesting,
+      peerName: peer.name,
+      totalBytes: selection.totalBytes,
+      bytesTransferred: 0,
+      currentFile: null,
+      currentSpeedBytesPerSec: 0,
+      peakSpeedBytesPerSec: 0,
+      topLevelCount: selection.topLevelCount,
+      startedAt: started,
+      completedItems: const [],
+      allItems: allItems,
+      files: selection.files,
+    );
+    _startSpeedTimer();
+
+    // ── Handshake ──────────────────────────────────────────────────────────
+    _peerAddress = peer.address;
+    _peerControlPort = peer.port;
+    try {
+      final handshakeSocket = await Socket.connect(
+        peer.address,
+        peer.port,
+        timeout: const Duration(seconds: 5),
+      );
+      _activeSockets.add(handshakeSocket);
+      _setSocketOptions(handshakeSocket);
+
+      final reader = _SocketStreamReader(handshakeSocket);
+
+      // Make sure our control server is up so receiver can reach us back
+      // (needed for stop signals).
+      if (_controlServer == null) {
+        _controlPort = await _pickFreePort();
+        _controlServer = await ServerSocket.bind(
+          InternetAddress.anyIPv4,
+          _controlPort,
+          shared: true,
+        );
+        _controlServer!.listen(_handleControlConnection);
+      }
+
+      // Send hello (plaintext) with our ephemeral public key.
+      final helloPayload = jsonEncode({
+        'type': 'hello',
+        'sessionId': sessionId,
+        'senderName': senderName,
+        'pubKey': base64Encode(_sessionCrypto!.publicKeyBytes),
+        'fullPower': _fullPowerMode,
+        'controlPort': _controlPort,
+      });
+      handshakeSocket.add(utf8.encode('$helloPayload\n'));
+      await handshakeSocket.flush();
+
+      // Receive hello_ack (plaintext) with receiver's ephemeral public key.
+      final ackLine = await reader.readLine();
+      final ack = jsonDecode(ackLine) as Map<String, dynamic>;
+      if (ack['type'] != 'hello_ack') {
+        _finishSession(
+          status: TransferStatus.failed,
+          error: 'Handshake failed',
+        );
+        await handshakeSocket.close();
+        _activeSockets.remove(handshakeSocket);
+        return TransferStatus.failed;
+      }
+      final receiverPubKeyBytes = base64Decode(ack['pubKey'] as String);
+      final receiverFullPower = (ack['fullPower'] as bool?) ?? false;
+      // Both must have full power for it to take effect.
+      if (receiverFullPower && _fullPowerMode) {
+        // Already set — no-op.
+      } else {
+        _fullPowerMode = false; // Downgrade if mismatch.
+      }
+
+      // Derive shared session key.
+      await _sessionCrypto!.deriveKey(receiverPubKeyBytes, sessionId);
+      _sessionKey = _sessionCrypto!.sessionKey;
+
+      // Send encrypted transfer_request.
+      await _writeEncryptedJson(handshakeSocket, {
+        'type': 'transfer_request',
+        'topLevelCount': selection.topLevelCount,
+        'totalBytes': selection.totalBytes,
+        'files': selection.files.map((f) => f.toJson()).toList(),
+      }, _sessionKey!);
+      await handshakeSocket.flush();
+
+      // Read encrypted accept/reject.
+      final response = await _readEncryptedJson(reader, _sessionKey!);
+      await handshakeSocket.close();
+      _activeSockets.remove(handshakeSocket);
+
+      if (response['type'] != 'accept') {
+        _finishSession(status: TransferStatus.rejected);
+        return TransferStatus.rejected;
+      }
+    } catch (err) {
+      _finishSession(
+        status: TransferStatus.failed,
+        error: 'Could not connect to device.',
+      );
+      return TransferStatus.failed;
+    }
+
+    // ── File transfer ──────────────────────────────────────────────────────
+    _setSessionStatus(TransferStatus.inProgress);
+    _currentTransferFiles = selection.files;
+    _topLevelStartBytes = 0;
+    _resetSpeedCounters();
+
+    try {
+      await _sendFilesInParallel(
+        peer: peer,
+        sessionId: sessionId,
+        files: selection.files,
+      );
+      _finishSession(status: TransferStatus.completed);
+      await _notifyComplete(activeSession.value);
+      return TransferStatus.completed;
+    } catch (err) {
+      if (_localStopRequested) return TransferStatus.stopped;
+      if (_isExpectedClosure(err)) {
+        _finishSession(
+          status: TransferStatus.stopped,
+          error: 'Stopped by Receiver',
+        );
+        await _notifyStopped(activeSession.value);
+        return TransferStatus.stopped;
+      }
+      _finishSession(
+        status: TransferStatus.failed,
+        error: 'Transfer failed. Please try again.',
+      );
+      await _notifyFailed(activeSession.value);
+      return TransferStatus.failed;
+    }
+  }
+
+  // ─── Parallel file sending ────────────────────────────────────────────────
+
+  Future<void> _sendFilesInParallel({
+    required PeerDevice peer,
+    required String sessionId,
+    required List<TransferFileEntry> files,
+  }) async {
+    if (files.length == 1 && files.first.sizeBytes > _largeFileThreshold) {
+      await _sendLargeFileInParallel(
+        peer: peer,
+        sessionId: sessionId,
+        file: files.first,
+      );
+      return;
+    }
+    final errors = <String>[];
+    var nextIdx = 0;
+    var active = 0;
+    var allStarted = false;
+    final done = Completer<void>();
+
+    void startNext() {
+      while (active < _parallelConns && nextIdx < files.length) {
+        final file = files[nextIdx];
+        final isLast = nextIdx == files.length - 1;
+        nextIdx++;
+        active++;
+        _sendSingleFile(
+              peer: peer,
+              sessionId: sessionId,
+              file: file,
+              isLast: isLast,
+            )
+            .then((_) {
+              active--;
+              if (!allStarted) startNext();
+              if (active == 0 && allStarted && !done.isCompleted) {
+                done.complete();
+              }
+            })
+            .catchError((err) {
+              errors.add('$err');
+              active--;
+              if (!allStarted) startNext();
+              if (active == 0 && allStarted && !done.isCompleted) {
+                done.complete();
+              }
+            });
+      }
+      if (nextIdx >= files.length) {
+        allStarted = true;
+        if (active == 0 && !done.isCompleted) done.complete();
+      }
+    }
+
+    startNext();
+    await done.future;
+    if (errors.isNotEmpty) {
+      throw StateError('Some files failed: ${errors.join('; ')}');
+    }
+  }
+
+  Future<void> _sendLargeFileInParallel({
+    required PeerDevice peer,
+    required String sessionId,
+    required TransferFileEntry file,
+  }) async {
+    final fileSize = file.sizeBytes;
+    final numChunks = (fileSize / _parallelChunkSize).ceil().clamp(
+      1,
+      _parallelConns,
+    );
+    final chunkSize = (fileSize / numChunks).ceil();
+
+    _setCurrentFile(file.name);
+
+    final errors = <String>[];
+    var active = 0;
+    var completed = 0;
+    final done = Completer<void>();
+
+    for (var i = 0; i < numChunks; i++) {
+      final offset = i * chunkSize;
+      final length = min(chunkSize, fileSize - offset);
+      final idx = i;
+      if (i > 0) await Future.delayed(const Duration(milliseconds: 50));
+      active++;
+
+      _sendFileChunk(
+            peer: peer,
+            sessionId: sessionId,
+            file: file,
+            chunkOffset: offset,
+            chunkLength: length,
+            chunkIndex: idx,
+            totalChunks: numChunks,
+            isLastFile: true,
+          )
+          .then((_) {
+            active--;
+            completed++;
+            if (completed == numChunks && !done.isCompleted) {
+              _appendCompleted(
+                TransferCompletedItem(
+                  name: file.name,
+                  path: file.sourcePath,
+                  sizeBytes: file.sizeBytes,
+                  relativePath: file.relativePath,
+                  topLevelName: file.topLevelName,
+                ),
+              );
+              done.complete();
+            }
+          })
+          .catchError((err) {
+            errors.add('chunk $idx: $err');
+            active--;
+            if (active == 0 && !done.isCompleted) done.complete();
+          });
+    }
+    await done.future;
+    if (errors.isNotEmpty) {
+      throw StateError('Chunked send failed: ${errors.join('; ')}');
+    }
+  }
+
+  Future<void> _sendFileChunk({
+    required PeerDevice peer,
+    required String sessionId,
+    required TransferFileEntry file,
+    required int chunkOffset,
+    required int chunkLength,
+    required int chunkIndex,
+    required int totalChunks,
+    required bool isLastFile,
+  }) async {
+    final socket = await Socket.connect(peer.address, peer.port);
+    _activeSockets.add(socket);
+    try {
+      _setSocketOptions(socket);
+
+      // Identify session (plaintext).
+      socket.add(
+        utf8.encode(
+          '${jsonEncode({'type': 'file_hello', 'sessionId': sessionId})}\n',
+        ),
+      );
+
+      // Send encrypted header.
+      await _writeEncryptedJson(socket, {
+        'type': 'file_chunk',
+        'relativePath': file.relativePath,
+        'name': file.name,
+        'sizeBytes': file.sizeBytes,
+        'topLevelName': file.topLevelName,
+        'isLast': isLastFile && chunkIndex == totalChunks - 1,
+        'chunkOffset': chunkOffset,
+        'chunkLength': chunkLength,
+        'chunkIndex': chunkIndex,
+        'totalChunks': totalChunks,
+      }, _sessionKey!);
+      await socket.flush();
+
+      // Send encrypted file data.
+      final raf = await File(file.sourcePath).open();
+      try {
+        await raf.setPosition(chunkOffset);
+        await _sendEncryptedFileData(
+          socket,
+          raf,
+          chunkLength,
+          _sessionKey!,
+          _onBytesMoved,
+        );
+      } finally {
+        await raf.close();
+      }
+      await socket.flush();
+
+      // Wait for encrypted ACK.
+      final reader = _SocketStreamReader(socket);
+      final ack = await _readEncryptedJson(reader, _sessionKey!);
+      if (ack['type'] != 'file_received' || ack['ok'] != true) {
+        throw StateError('Receiver rejected chunk $chunkIndex of ${file.name}');
+      }
+    } finally {
+      await socket.close();
+      _activeSockets.remove(socket);
+    }
+  }
+
+  Future<void> _sendSingleFile({
+    required PeerDevice peer,
+    required String sessionId,
+    required TransferFileEntry file,
+    required bool isLast,
+  }) async {
+    final fileRef = File(file.sourcePath);
+    if (!fileRef.existsSync()) return;
+
+    _setCurrentFile(file.name);
+    final socket = await Socket.connect(peer.address, peer.port);
+    _activeSockets.add(socket);
+    try {
+      _setSocketOptions(socket);
+
+      // Identify session (plaintext).
+      socket.add(
+        utf8.encode(
+          '${jsonEncode({'type': 'file_hello', 'sessionId': sessionId})}\n',
+        ),
+      );
+
+      // Encrypted header.
+      await _writeEncryptedJson(socket, {
+        'type': 'file_chunk',
+        'relativePath': file.relativePath,
+        'name': file.name,
+        'sizeBytes': file.sizeBytes,
+        'topLevelName': file.topLevelName,
+        'isLast': isLast,
+      }, _sessionKey!);
+      await socket.flush();
+
+      // Encrypted file data.
+      final raf = await fileRef.open();
+      try {
+        await _sendEncryptedFileData(
+          socket,
+          raf,
+          file.sizeBytes,
+          _sessionKey!,
+          _onBytesMoved,
+        );
+      } finally {
+        await raf.close();
+      }
+      await socket.flush();
+
+      // ACK.
+      final reader = _SocketStreamReader(socket);
+      final ack = await _readEncryptedJson(reader, _sessionKey!);
+      if (ack['type'] != 'file_received' || ack['ok'] != true) {
+        throw StateError('Receiver rejected ${file.name}');
+      }
+
+      _appendCompleted(
+        TransferCompletedItem(
+          name: file.name,
+          path: file.sourcePath,
+          sizeBytes: file.sizeBytes,
+          relativePath: file.relativePath,
+          topLevelName: file.topLevelName,
+        ),
+      );
+    } finally {
+      await socket.close();
+      _activeSockets.remove(socket);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Incoming request handling
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<bool> respondToIncoming({
+    required String sessionId,
+    required bool accept,
+  }) async {
+    _localStopRequested = false;
+    final pending = _pendingIncoming.remove(sessionId);
+    if (pending == null) return false;
+
+    if (_sessionKey == null) {
+      pending.socket.destroy();
+      incomingRequest.value = null;
+      return false;
+    }
+
+    if (!accept) {
+      try {
+        await _writeEncryptedJson(pending.socket, {
+          'type': 'reject',
+          'sessionId': sessionId,
+        }, _sessionKey!);
+        await pending.socket.flush();
+      } catch (_) {}
+      await pending.socket.close();
+      incomingRequest.value = null;
+      return false;
+    }
+
+    // ── Accept path: prepare session BEFORE sending accept so the sender's
+    //    immediate file_hello connections find activeSession in inProgress.
+
+    if (_receiveBasePath.isEmpty) {
+      _receiveBasePath = await defaultReceiveDirectory();
+    }
+    final dir = Directory(_receiveBasePath);
+    if (!dir.existsSync()) {
+      try {
+        await dir.create(recursive: true);
+      } catch (_) {}
+    }
+
+    final topLevelSizes = <String, int>{};
+    for (final f in pending.request.files) {
+      topLevelSizes[f.topLevelName] =
+          (topLevelSizes[f.topLevelName] ?? 0) + f.sizeBytes;
+    }
+    final allItems =
+        topLevelSizes.entries
+            .map(
+              (e) => TransferItemProgress(
+                name: e.key,
+                sizeBytes: e.value,
+                bytesTransferred: 0,
+              ),
+            )
+            .toList();
+
+    activeSession.value = TransferSession(
+      sessionId: sessionId,
+      role: TransferRole.receiving,
+      status: TransferStatus.inProgress,
+      peerName: pending.request.senderName,
+      totalBytes: pending.request.totalBytes,
+      bytesTransferred: 0,
+      currentFile: null,
+      currentSpeedBytesPerSec: 0,
+      peakSpeedBytesPerSec: 0,
+      topLevelCount: pending.request.topLevelCount,
+      startedAt: DateTime.now(),
+      completedItems: const [],
+      allItems: allItems,
+      files: pending.request.files,
+    );
+    _startSpeedTimer();
+    _resetSpeedCounters();
+
+    try {
+      await _writeEncryptedJson(pending.socket, {
+        'type': 'accept',
+        'sessionId': sessionId,
+      }, _sessionKey!);
+      await pending.socket.flush();
+    } catch (err) {
+      debugPrint('dinoshareTransferService: failed to send accept: $err');
+      pending.socket.destroy();
+      incomingRequest.value = null;
+      _finishSession(
+        status: TransferStatus.failed,
+        error: 'Lost connection to sender.',
+      );
+      return false;
+    }
+    await pending.socket.close();
+    incomingRequest.value = null;
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Stop
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> stopActiveTransfer() async {
+    final session = activeSession.value;
+    if (session == null) return;
+    _localStopRequested = true;
+    await _sendStopSignal(session);
+    for (final s in _activeSockets) {
+      s.destroy();
+    }
+    _activeSockets.clear();
+    _finishSession(status: TransferStatus.stopped, error: 'Stopped by you');
+    await _notifyStopped(activeSession.value);
+  }
+
+  Future<void> _sendStopSignal(TransferSession session) async {
+    final addr =
+        _peerAddress ??
+        (_activeSockets.isNotEmpty ? _activeSockets.first.remoteAddress : null);
+    // Sender knows the receiver's control port (peer.port). Receiver only
+    // knows the sender's source port from the inbound socket, which is the
+    // ephemeral client port — not useful. So receiver→sender stop is best
+    // effort via the sender's _controlPort if it happens to be the same; we
+    // skip if we don't have a usable port.
+    final port = _peerControlPort;
+    if (addr == null || port == null || port == 0) return;
+    try {
+      final s = await Socket.connect(
+        addr,
+        port,
+        timeout: const Duration(milliseconds: 700),
+      );
+      try {
+        s.add(
+          utf8.encode(
+            '${jsonEncode({'type': 'transfer_stop', 'sessionId': session.sessionId, 'by': session.role == TransferRole.sending ? 'sender' : 'receiver'})}\n',
+          ),
+        );
+        await s.flush();
+      } finally {
+        await s.close();
+      }
+    } catch (_) {}
+  }
+
+  void clearCompletedSession() {
+    final s = activeSession.value;
+    if (s == null) return;
+    if (s.status == TransferStatus.completed ||
+        s.status == TransferStatus.rejected ||
+        s.status == TransferStatus.failed ||
+        s.status == TransferStatus.stopped) {
+      activeSession.value = null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Control-server: handles all incoming TCP connections
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _handleControlConnection(Socket socket) async {
+    _activeSockets.add(socket);
+    _setSocketOptions(socket);
+    final reader = _SocketStreamReader(socket);
+    try {
+      final firstLine = await reader.readLine();
+      final payload = jsonDecode(firstLine) as Map<String, dynamic>;
+      final type = payload['type'] as String?;
+
+      if (type == 'hello') {
+        await _handleHello(reader, socket, payload);
+        return;
+      }
+      if (type == 'file_hello') {
+        await _handleFileHello(reader, socket, payload);
+        return;
+      }
+      if (type == 'transfer_stop') {
+        await _handleTransferStop(payload);
+        await socket.close();
+        return;
+      }
+    } catch (err) {
+      debugPrint('dinoshareTransferService: control error: $err');
+      socket.destroy();
+    } finally {
+      _activeSockets.remove(socket);
+    }
+  }
+
+  // ── Handshake (receiver side) ─────────────────────────────────────────────
+
+  Future<void> _handleHello(
+    _SocketStreamReader reader,
+    Socket socket,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!_receivingEnabled) {
+      socket.destroy();
+      return;
+    }
+
+    final sessionId = payload['sessionId'] as String;
+    final senderName = payload['senderName'] as String;
+    final senderPubKeyBytes = base64Decode(payload['pubKey'] as String);
+    final senderFullPower = (payload['fullPower'] as bool?) ?? false;
+
+    // Generate our own ephemeral key pair.
+    final myCrypto = await _generateCrypto();
+    await myCrypto.deriveKey(senderPubKeyBytes, sessionId);
+    _sessionKey = myCrypto.sessionKey;
+
+    // Reply with our public key (plaintext).
+    final ackJson = jsonEncode({
+      'type': 'hello_ack',
+      'pubKey': base64Encode(myCrypto.publicKeyBytes),
+      'fullPower': _fullPowerMode,
+    });
+    socket.add(utf8.encode('$ackJson\n'));
+    await socket.flush();
+
+    // Read encrypted transfer_request.
+    final request = await _readEncryptedJson(reader, _sessionKey!);
+    if (request['type'] != 'transfer_request') {
+      socket.destroy();
+      return;
+    }
+
+    final files =
+        (request['files'] as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .map(TransferFileEntry.fromJson)
+            .toList();
+    final totalBytes = request['totalBytes'] as int;
+    final topLevelCount = request['topLevelCount'] as int;
+
+    // Disk-space check.
+    final hasSpace = await _hasSufficientSpace(_receiveBasePath, totalBytes);
+    if (!hasSpace) {
+      try {
+        await _writeEncryptedJson(socket, {
+          'type': 'reject',
+          'reason': 'disk_full',
+        }, _sessionKey!);
+        await socket.flush();
+      } catch (_) {}
+      await socket.close();
+      return;
+    }
+
+    // Record sender endpoint so we can signal stop even if sockets die later.
+    _peerAddress = socket.remoteAddress;
+    final senderControlPort = payload['controlPort'];
+    if (senderControlPort is int && senderControlPort > 0) {
+      _peerControlPort = senderControlPort;
+    }
+
+    final incoming = IncomingTransferRequest(
+      sessionId: sessionId,
+      senderName: senderName,
+      files: files,
+      totalBytes: totalBytes,
+      topLevelCount: topLevelCount,
+      senderFullPower: senderFullPower,
+    );
+    _pendingIncoming[sessionId] = _PendingIncoming(
+      request: incoming,
+      socket: socket,
+    );
+    incomingRequest.value = incoming;
+    // Socket is kept open until the user accepts/rejects.
+  }
+
+  // ── File data (receiver side) ─────────────────────────────────────────────
+
+  Future<void> _handleFileHello(
+    _SocketStreamReader reader,
+    Socket socket,
+    Map<String, dynamic> payload,
+  ) async {
+    final sessionId = payload['sessionId'] as String;
+    final session = activeSession.value;
+    if (session == null ||
+        session.status != TransferStatus.inProgress ||
+        sessionId != session.sessionId) {
+      socket.destroy();
+      return;
+    }
+    if (_sessionKey == null) {
+      socket.destroy();
+      return;
+    }
+
+    // Read encrypted file header.
+    late Map<String, dynamic> header;
+    try {
+      header = await _readEncryptedJson(reader, _sessionKey!);
+    } catch (_) {
+      socket.destroy();
+      return;
+    }
+
+    final relativePath = _sanitizeRelativePath(
+      header['relativePath'] as String,
+    );
+    final fileName = _sanitizeFileName(header['name'] as String);
+    final totalFileSize = header['sizeBytes'] as int;
+    final topLevelName = _sanitizeFileName(header['topLevelName'] as String);
+    final isChunked =
+        header.containsKey('totalChunks') &&
+        (header['totalChunks'] as int? ?? 1) > 1;
+
+    _setCurrentFile(fileName);
+    if (_currentTopLevelName != topLevelName) {
+      _currentTopLevelName = topLevelName;
+      _topLevelStartBytes = session.bytesTransferred;
+    }
+
+    final outputPath = p.join(_receiveBasePath, relativePath);
+    final outputFile = File(outputPath);
+    try {
+      if (!outputFile.parent.existsSync()) {
+        await outputFile.parent.create(recursive: true);
+      }
+    } catch (err) {
+      _finishSession(
+        status: TransferStatus.failed,
+        error: 'Could not create receive folder.',
+      );
+      socket.destroy();
+      return;
+    }
+
+    try {
+      if (isChunked) {
+        final chunkOffset = header['chunkOffset'] as int;
+        final chunkLength = header['chunkLength'] as int;
+        final chunkIndex = header['chunkIndex'] as int;
+        final totalChunks = header['totalChunks'] as int;
+        await _receiveChunk(
+          reader: reader,
+          outputFile: outputFile,
+          totalFileSize: totalFileSize,
+          chunkOffset: chunkOffset,
+          chunkLength: chunkLength,
+          chunkIndex: chunkIndex,
+          totalChunks: totalChunks,
+          fileName: fileName,
+          relativePath: relativePath,
+          topLevelName: topLevelName,
+          outputPath: outputPath,
+        );
+      } else {
+        // Regular single-connection file.
+        final sink = outputFile.openWrite();
+        try {
+          await _receiveEncryptedFileData(
+            reader,
+            sink,
+            totalFileSize,
+            _sessionKey!,
+            _onBytesMoved,
+          );
+          await sink.flush();
+        } finally {
+          await sink.close();
+        }
+
+        final mimeWarn = await mimeWarningForFile(outputFile, fileName);
+        _appendCompleted(
+          TransferCompletedItem(
+            name: fileName,
+            path: outputPath,
+            sizeBytes: totalFileSize,
+            relativePath: relativePath,
+            topLevelName: topLevelName,
+            mimeWarning: mimeWarn,
+          ),
+        );
+      }
+    } catch (err) {
+      final latest = activeSession.value;
+      if (latest == null ||
+          latest.status == TransferStatus.stopped ||
+          latest.status == TransferStatus.failed ||
+          latest.status == TransferStatus.completed ||
+          _localStopRequested) {
+        socket.destroy();
+        return;
+      }
+      if (_isExpectedClosure(err)) {
+        _finishSession(
+          status: TransferStatus.stopped,
+          error: 'Stopped by Sender',
+        );
+        await _notifyStopped(activeSession.value);
+      } else {
+        _finishSession(
+          status: TransferStatus.failed,
+          error: 'Could not save file. Please try again.',
+        );
+        await _notifyFailed(activeSession.value);
+      }
+      socket.destroy();
+      return;
+    }
+
+    // Send encrypted ACK.
+    await _writeEncryptedJson(socket, {
+      'type': 'file_received',
+      'ok': true,
+    }, _sessionKey!);
+    await socket.flush();
+    await socket.close();
+
+    final updated = activeSession.value;
+    if (updated != null &&
+        updated.completedItems.length >= updated.topLevelCount) {
+      _finishSession(status: TransferStatus.completed);
+      await _notifyComplete(updated);
+    }
+  }
+
+  Future<void> _receiveChunk({
+    required _SocketStreamReader reader,
+    required File outputFile,
+    required int totalFileSize,
+    required int chunkOffset,
+    required int chunkLength,
+    required int chunkIndex,
+    required int totalChunks,
+    required String fileName,
+    required String relativePath,
+    required String topLevelName,
+    required String outputPath,
+  }) async {
+    final key = relativePath;
+    _chunkedFileProgress.putIfAbsent(key, () => {});
+
+    final tempFile = File('${outputFile.path}.chunk$chunkIndex.tmp');
+    final sink = tempFile.openWrite();
+    try {
+      await _receiveEncryptedFileData(
+        reader,
+        sink,
+        chunkLength,
+        _sessionKey!,
+        _onBytesMoved,
+      );
+      await sink.flush();
+    } finally {
+      await sink.close();
+    }
+    _chunkedFileProgress[key]!.add(chunkIndex);
+
+    if (_chunkedFileProgress[key]!.length == totalChunks) {
+      final raf = await outputFile.open(mode: FileMode.write);
+      try {
+        await raf.truncate(totalFileSize);
+        for (var i = 0; i < totalChunks; i++) {
+          final cf = File('${outputFile.path}.chunk$i.tmp');
+          final bytes = await cf.readAsBytes();
+          await raf.writeFrom(bytes);
+          await cf.delete();
+        }
+        await raf.flush();
+      } finally {
+        await raf.close();
+      }
+      _chunkedFileProgress.remove(key);
+      final mimeWarn = await mimeWarningForFile(outputFile, fileName);
+      _appendCompleted(
+        TransferCompletedItem(
+          name: fileName,
+          path: outputPath,
+          sizeBytes: totalFileSize,
+          relativePath: relativePath,
+          topLevelName: topLevelName,
+          mimeWarning: mimeWarn,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleTransferStop(Map<String, dynamic> payload) async {
+    final session = activeSession.value;
+    final sessionId = payload['sessionId'] as String?;
+    if (sessionId == null || session == null) return;
+    if (session.status != TransferStatus.inProgress ||
+        sessionId != session.sessionId) {
+      return;
+    }
+
+    final by = payload['by'] as String? ?? 'peer';
+    for (final s in _activeSockets) {
+      s.destroy();
+    }
+    _activeSockets.clear();
+    _finishSession(status: TransferStatus.stopped, error: 'Stopped by $by');
+    await _notifyStopped(activeSession.value);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Discovery internals
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _ensureDiscoverySocket() async {
+    if (_discoverySocket != null) return;
+    _discoverySocket = await RawDatagramSocket.bind(
+      InternetAddress.anyIPv4,
+      _kDiscoveryPort,
+      reuseAddress: true,
+    );
+    _discoverySocket!.broadcastEnabled = true;
+    _discoverySocket!.listen(_handleDiscoveryEvent);
+  }
+
+  Future<void> _joinMulticast() async {
+    if (_multicastJoined || _discoverySocket == null) return;
+    try {
+      _discoverySocket!.joinMulticast(InternetAddress(_kGroupAddress));
+      _multicastJoined = true;
+    } catch (_) {
+      _multicastJoined = true; // Assume joined or not supported.
+    }
+  }
+
+  Future<void> _leaveMulticast() async {
+    if (!_multicastJoined || _discoverySocket == null) return;
+    try {
+      _discoverySocket!.leaveMulticast(InternetAddress(_kGroupAddress));
+    } catch (_) {}
+    _multicastJoined = false;
+  }
+
+  void _sendDiscoverPing() {
+    if (!_discovering || _discoverySocket == null) return;
+    final payload = utf8.encode(_kDiscoverPing);
+    for (final target in _discoveryTargets) {
+      try {
+        _discoverySocket!.send(payload, target, _kDiscoveryPort);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _refreshDiscoveryTargets() async {
+    _discoveryTargets
+      ..clear()
+      ..add(InternetAddress(_kGroupAddress))
+      ..add(InternetAddress('255.255.255.255'));
+    try {
+      final ifaces = await NetworkInterface.list(
+        includeLoopback: false,
+        includeLinkLocal: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in ifaces) {
+        for (final addr in iface.addresses) {
+          final bcast = _directedBroadcast(addr);
+          if (bcast != null) _discoveryTargets.add(bcast);
+        }
+      }
+    } catch (_) {}
+  }
+
+  InternetAddress? _directedBroadcast(InternetAddress addr) {
+    final parts = addr.address.split('.');
+    if (parts.length != 4) return null;
+    final nums = parts.map(int.tryParse).toList();
+    if (nums.any((n) => n == null)) return null;
+    return InternetAddress('${nums[0]}.${nums[1]}.${nums[2]}.255');
+  }
+
+  void _handleDiscoveryEvent(RawSocketEvent event) {
+    if (event != RawSocketEvent.read) return;
+    final socket = _discoverySocket;
+    if (socket == null) return;
+    final packet = socket.receive();
+    if (packet == null) return;
+    final message = utf8.decode(packet.data, allowMalformed: true);
+
+    if (message == _kDiscoverPing && _receivingEnabled) {
+      final reply = jsonEncode({
+        'type': 'discover_response',
+        'id': _deviceId,
+        'name': _deviceName,
+        'port': _controlPort,
+        'deviceType': _getDeviceTypeString(),
+      });
+      try {
+        socket.send(utf8.encode(reply), packet.address, packet.port);
+      } catch (_) {}
+      return;
+    }
+
+    if (!_discovering) return;
+    try {
+      final decoded = jsonDecode(message) as Map<String, dynamic>;
+      if (decoded['type'] != 'discover_response') return;
+      final id = decoded['id'] as String;
+      if (id == _deviceId) return;
+      final peer = PeerDevice(
+        id: id,
+        name: decoded['name'] as String,
+        address: packet.address,
+        port: decoded['port'] as int,
+        lastSeen: DateTime.now(),
+        deviceType: decoded['deviceType'] as String?,
+      );
+      _peerMap[id] = peer;
+      discoveredPeers.value =
+          _peerMap.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+    } catch (_) {}
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Speed & ETA timers (raw, no smoothing)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _resetSpeedCounters() {
+    _lastByteAt = DateTime.now();
+    _lastSpeedSampleAt = DateTime.now();
+    _lastSpeedBytes = activeSession.value?.bytesTransferred ?? 0;
+    _etaLastCalcAt = null;
+    _etaLastRemainingBytes = null;
+  }
+
+  void _startSpeedTimer() {
+    _speedTimer?.cancel();
+    _etaTimer?.cancel();
+
+    // Speed: raw instant rate every 300 ms.
+    _speedTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      final session = activeSession.value;
+      if (session == null || session.status != TransferStatus.inProgress) {
+        return;
+      }
+      final now = DateTime.now();
+      final elapsed =
+          now.difference(_lastSpeedSampleAt).inMilliseconds / 1000.0;
+      if (elapsed <= 0) return;
+      final delta = (session.bytesTransferred - _lastSpeedBytes).clamp(
+        0,
+        1 << 60,
+      );
+      final speed = delta / elapsed;
+      final peak = max(session.peakSpeedBytesPerSec, speed);
+      activeSession.value = session.copyWith(
+        currentSpeedBytesPerSec: speed,
+        peakSpeedBytesPerSec: peak,
+      );
+      _lastSpeedSampleAt = now;
+      _lastSpeedBytes = session.bytesTransferred;
+      if (delta > 0) _lastByteAt = now;
+    });
+
+    // ETA: recalculate every 3 seconds.
+    _etaTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      final session = activeSession.value;
+      if (session == null || session.status != TransferStatus.inProgress) {
+        return;
+      }
+      final remaining = session.totalBytes - session.bytesTransferred;
+      if (remaining <= 0) {
+        activeSession.value = session.copyWith(estimatedSecondsRemaining: 0);
+        return;
+      }
+      final elapsedSec = max(
+        1,
+        DateTime.now().difference(session.startedAt).inSeconds,
+      );
+      final avgSpeed = session.bytesTransferred / elapsedSec;
+      final effectiveSpeed =
+          session.currentSpeedBytesPerSec > 0
+              ? session.currentSpeedBytesPerSec * 0.7 + avgSpeed * 0.3
+              : avgSpeed;
+      if (effectiveSpeed < 10 * 1024) {
+        // Too slow — don't show ETA.
+        activeSession.value = session.copyWith(clearEta: true);
+        return;
+      }
+      final etaSec = max(1, (remaining / effectiveSpeed).ceil());
+      activeSession.value = session.copyWith(estimatedSecondsRemaining: etaSec);
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Session state helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _onBytesMoved(int bytes) {
+    _lastByteAt = DateTime.now();
+    final session = activeSession.value;
+    if (session == null) return;
+    final next = min(session.totalBytes, session.bytesTransferred + bytes);
+    List<TransferItemProgress>? updatedItems;
+    if (_currentTopLevelName != null) {
+      final itemBytes = next - _topLevelStartBytes;
+      updatedItems =
+          session.allItems.map((item) {
+            if (item.name == _currentTopLevelName) {
+              return item.copyWith(bytesTransferred: itemBytes);
+            }
+            return item;
+          }).toList();
+    }
+    activeSession.value = session.copyWith(
+      bytesTransferred: next,
+      allItems: updatedItems,
+    );
+  }
+
+  void _setSessionStatus(TransferStatus status) {
+    final s = activeSession.value;
+    if (s == null) return;
+    activeSession.value = s.copyWith(status: status);
+  }
+
+  void _setCurrentFile(String? name) {
+    final session = activeSession.value;
+    if (session == null) return;
+    if (name != null) {
+      for (final f in _currentTransferFiles) {
+        if (f.name == name) {
+          _currentTopLevelName = f.topLevelName;
+          _topLevelStartBytes = session.bytesTransferred;
+          break;
+        }
+      }
+    }
+    activeSession.value = session.copyWith(currentFile: name);
+  }
+
+  void _appendCompleted(TransferCompletedItem item) {
+    final session = activeSession.value;
+    if (session == null) return;
+    final updatedAll =
+        session.allItems.map((fi) {
+          if (fi.name == item.topLevelName || fi.name == item.name) {
+            return fi.copyWith(bytesTransferred: fi.sizeBytes, path: item.path);
+          }
+          return fi;
+        }).toList();
+    activeSession.value = session.copyWith(
+      completedItems: [...session.completedItems, item],
+      allItems: updatedAll,
+    );
+  }
+
+  void _finishSession({required TransferStatus status, String? error}) {
+    _speedTimer?.cancel();
+    _etaTimer?.cancel();
+    _speedTimer = null;
+    _etaTimer = null;
+    final s = activeSession.value;
+    if (s == null) {
+      _sessionKey = null;
+      _sessionCrypto = null;
+      _peerAddress = null;
+      _peerControlPort = null;
+      return;
+    }
+    final wasInProgressOrRequesting =
+        s.status == TransferStatus.inProgress ||
+        s.status == TransferStatus.requesting;
+    activeSession.value = s.copyWith(
+      status: status,
+      currentSpeedBytesPerSec: 0,
+      endedAt: DateTime.now(),
+      error: error,
+    );
+    // Notify the peer about an unexpected end so it doesn't keep trying.
+    // _localStopRequested already sent its own signal via stopActiveTransfer().
+    final shouldNotifyPeer =
+        wasInProgressOrRequesting &&
+        !_localStopRequested &&
+        (status == TransferStatus.failed || status == TransferStatus.stopped);
+    if (shouldNotifyPeer) {
+      // Fire-and-forget; don't block the finish path.
+      unawaited(_sendStopSignal(activeSession.value!));
+    }
+    _sessionKey = null;
+    _sessionCrypto = null;
+    _peerAddress = null;
+    _peerControlPort = null;
+    if (status == TransferStatus.completed) {
+      final completed = activeSession.value;
+      if (completed != null) onTransferComplete?.call(completed);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Notifications
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _notifyComplete(TransferSession? session) async {
+    if (session == null) return;
+    await _showNotification(
+      title: 'Transfer completed',
+      body: '${session.topLevelCount} item(s) with ${session.peerName}',
+    );
+  }
+
+  Future<void> _notifyStopped(TransferSession? session) async {
+    if (session == null) return;
+    final action =
+        session.role == TransferRole.sending ? 'Sharing' : 'Receiving';
+    await _showNotification(
+      title: '$action stopped',
+      body: session.error ?? '$action was stopped.',
+    );
+  }
+
+  Future<void> _notifyFailed(TransferSession? session) async {
+    if (session == null) return;
+    final action =
+        session.role == TransferRole.sending ? 'Sharing' : 'Receiving';
+    await _showNotification(
+      title: '$action failed',
+      body: session.error ?? 'Transfer could not complete.',
+    );
+  }
+
+  Future<void> _showNotification({
+    required String title,
+    required String body,
+  }) async {
+    const android = AndroidNotificationDetails(
+      'dinoshare_transfers',
+      'Dino Transfers',
+      channelDescription: 'Transfer status alerts',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const darwin = DarwinNotificationDetails();
+    try {
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch % 2147483647,
+        title,
+        body,
+        const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
+      );
+    } catch (_) {}
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Socket utilities
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _setSocketOptions(Socket socket) {
+    try {
+      if (!Platform.isWindows) {
+        socket.setOption(SocketOption.tcpNoDelay, true);
+      }
+      socket.setRawOption(
+        RawSocketOption(_kSolSocket, _kSoSndbuf, _int32LE(_socketBuffer)),
+      );
+      socket.setRawOption(
+        RawSocketOption(_kSolSocket, _kSoRcvbuf, _int32LE(_socketBuffer)),
+      );
+    } catch (_) {}
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Misc
+  // ─────────────────────────────────────────────────────────────────────────
+
+  bool _isExpectedClosure(Object err) {
+    final s = err.toString().toLowerCase();
+    return s.contains('connection closed') ||
+        s.contains('connection reset') ||
+        s.contains('broken pipe') ||
+        s.contains('software caused connection abort') ||
+        s.contains('connection aborted');
+  }
+
+  String _buildSessionId() {
+    return '${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(999999999)}';
+  }
+
+  String _buildDeviceId() {
+    return '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(999999999)}';
+  }
+
+  /// The local IPv4 address (first non-loopback), or empty string.
+  Future<String> localIpAddress() async {
+    try {
+      final ifaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in ifaces) {
+        if (iface.addresses.isNotEmpty) {
+          return iface.addresses.first.address;
+        }
+      }
+    } catch (_) {}
+    return '';
+  }
+}
