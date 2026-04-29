@@ -20,6 +20,7 @@ class _OnboardingState extends State<Onboarding> {
   bool _storageGranted = false;
   bool _notificationGranted = false;
   bool _requesting = false;
+  bool _permissionsRequested = false;
 
   @override
   void initState() {
@@ -29,10 +30,6 @@ class _OnboardingState extends State<Onboarding> {
 
   Future<void> _initPermissions() async {
     if (!Platform.isAndroid) {
-      // iOS: notification dialog is already shown by flutter_local_notifications
-      // during transferService.initialize(), before this screen renders.
-      // macOS/Windows/Linux: permissions are covered by entitlements or not
-      // required at runtime. All treated as granted here.
       setState(() {
         _storageGranted = true;
         _notificationGranted = true;
@@ -52,6 +49,8 @@ class _OnboardingState extends State<Onboarding> {
     return _storageGranted && _notificationGranted;
   }
 
+  bool get _showLetsGo => _allGranted || _permissionsRequested;
+
   Future<void> _requestPermissions() async {
     if (_requesting || !Platform.isAndroid) return;
     setState(() => _requesting = true);
@@ -60,7 +59,12 @@ class _OnboardingState extends State<Onboarding> {
       await Permission.notification.request();
     } catch (_) {}
     await _initPermissions();
-    if (mounted) setState(() => _requesting = false);
+    if (mounted) {
+      setState(() {
+        _requesting = false;
+        _permissionsRequested = true;
+      });
+    }
   }
 
   Future<void> _completeOnboarding() async {
@@ -126,22 +130,34 @@ class _OnboardingState extends State<Onboarding> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Row(
+            child: Column(
+              spacing: 12,
               children: [
-                Expanded(
-                  child: LButton(
-                    variant:
-                        _allGranted
-                            ? LButtonVariant.success
-                            : LButtonVariant.primary,
-                    disabled: _requesting,
-                    onPressed:
-                        _allGranted ? _completeOnboarding : _requestPermissions,
-                    child: Text(
-                      _allGranted ? "Let's go" : 'Enable Permissions',
-                    ),
+                if (!_allGranted)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LButton(
+                          variant: LButtonVariant.primary,
+                          disabled: _requesting,
+                          onPressed: _requestPermissions,
+                          child: const Text('Enable Permissions'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                if (_showLetsGo)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LButton(
+                          variant: LButtonVariant.success,
+                          onPressed: _completeOnboarding,
+                          child: const Text("Let's go"),
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),

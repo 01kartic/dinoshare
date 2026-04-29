@@ -91,6 +91,7 @@ class LItem extends StatefulWidget {
   final Color? borderColor;
   final BorderRadiusGeometry? borderRadius;
   final double spacing;
+  final double minHeight;
   final bool compact;
 
   const LItem({
@@ -107,6 +108,7 @@ class LItem extends StatefulWidget {
     this.borderColor,
     this.borderRadius,
     this.spacing = 12,
+    this.minHeight = 48,
     this.compact = false,
   });
 
@@ -121,7 +123,7 @@ class _LItemState extends State<LItem> {
   @override
   Widget build(BuildContext context) {
     final theme = context.theme;
-    final Color defaultBackground = theme.colors.card;
+    final Color defaultBackground = theme.colors.background;
     final Color effectiveBackground =
         widget.backgroundColor ?? defaultBackground;
     final bool interactive = widget.onPressed != null && !widget.disabled;
@@ -207,15 +209,14 @@ class _LItemState extends State<LItem> {
         child: GestureDetector(
           onTapDown:
               interactive ? (_) => setState(() => _pressed = true) : null,
-          onTapUp:
-              interactive ? (_) => setState(() => _pressed = false) : null,
+          onTapUp: interactive ? (_) => setState(() => _pressed = false) : null,
           onTapCancel:
               interactive ? () => setState(() => _pressed = false) : null,
           onTap: interactive ? widget.onPressed : null,
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            constraints: const BoxConstraints(minHeight: 48),
+            constraints: BoxConstraints(minHeight: widget.minHeight),
             padding:
                 widget.padding ??
                 const EdgeInsets.symmetric(vertical: 14, horizontal: 16),

@@ -254,7 +254,7 @@ class _TransferState extends State<Transfer> {
         name: previewName,
         isDirectory: _isDirectoryPath(previewPath),
         size: 48,
-        borderRadius: 8,
+        borderRadius: 6,
         showThumbnail: canShowPreview,
         iconColor: theme.colors.primary,
       ),
@@ -265,12 +265,6 @@ class _TransferState extends State<Transfer> {
               ? Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4),
                 child: LCircularProgress(value: item.progress * 100, size: 24),
-              )
-              : isCompleted
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedTick02,
-                size: 18,
-                color: theme.colors.primary,
               )
               : null,
       onPressed: canOpen ? () => openStoredFile(completedItem!.path) : null,

@@ -351,6 +351,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
                                     _pendingPeerId != null
                                         ? 'Waiting for receiver…'
                                         : 'Searching for devices',
+                                        style: TextStyle(color: theme.colors.foreground),
                                   ),
                                 ],
                               ),

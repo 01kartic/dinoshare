@@ -8,6 +8,7 @@ const String _kDataUnit = 'data_unit';
 const String _kAlwaysReceive = 'always_receive';
 const String _kFullPower = 'full_power';
 const String _kOnboardingDone = 'onboarding_done';
+const String _kNotificationsEnabled = 'notifications_enabled';
 
 // ── Global ValueNotifiers ────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ final ValueNotifier<DataUnitType> appDataUnit = ValueNotifier(
 );
 final ValueNotifier<bool> appAlwaysReceive = ValueNotifier(false);
 final ValueNotifier<bool> appFullPowerMode = ValueNotifier(false);
+final ValueNotifier<bool> appNotificationsEnabled = ValueNotifier(true);
 final ValueNotifier<List<SelectedShareItem>> appShareItems = ValueNotifier(
   <SelectedShareItem>[],
 );

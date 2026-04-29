@@ -187,13 +187,13 @@ class _FileThumbnailState extends State<FileThumbnail> {
 
     if (widget.showThumbnail && _isImage && !widget.isDirectory) {
       if (_imageBytes != null) {
-        return _buildImage(Image.memory(_imageBytes!, fit: BoxFit.cover));
+        return _buildImage(MemoryImage(_imageBytes!));
       }
 
       if (!isContentUri(widget.path) && !Platform.isAndroid) {
         final file = File(widget.path);
         if (file.existsSync()) {
-          return _buildImage(Image.file(file, fit: BoxFit.cover));
+          return _buildImage(FileImage(file));
         }
       }
     }
@@ -208,10 +208,18 @@ class _FileThumbnailState extends State<FileThumbnail> {
     return _buildIconFallback(theme);
   }
 
-  Widget _buildImage(Image image) {
+  Widget _buildImage(ImageProvider provider) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.borderRadius),
-      child: SizedBox(width: widget.size, height: widget.size, child: image),
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Image(
+          image: provider,
+          fit: BoxFit.cover,
+          errorBuilder: (_, error, stack) => _buildIconFallback(context.theme),
+        ),
+      ),
     );
   }
 
@@ -255,7 +263,6 @@ class _FileThumbnailState extends State<FileThumbnail> {
       width: widget.size,
       height: widget.size,
       decoration: BoxDecoration(
-        color: theme.colors.background,
         borderRadius: BorderRadius.circular(widget.borderRadius),
       ),
       child: Center(

@@ -3,14 +3,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:dinoshare/state/state_index.dart';
-import 'package:dinoshare/util/fomart_icon.dart';
 import 'package:dinoshare/util/platform_asset.dart';
-import 'package:dinoshare/util/stored_file.dart';
 import 'package:dinoshare/widgets/huge_button.dart';
 import 'package:dinoshare/widgets/button.dart';
 import 'package:dinoshare/widgets/items.dart';
 import 'package:dinoshare/widgets/header.dart';
-import 'package:dinoshare/widgets/file_thumbnail.dart';
+import 'package:dinoshare/widgets/transfer_history_group.dart';
 import 'package:dinoshare/style/theme.dart';
 import 'package:dinoshare/pages/history.dart';
 import 'package:dinoshare/pages/settings.dart';
@@ -95,7 +93,7 @@ class _HomeState extends State<Home> {
                               ),
                               onPressed: () async {
                                 await pickShareTargets(reset: true);
-                                if (!mounted) return;
+                                if (!context.mounted) return;
                                 if (appShareItems.value.isEmpty) return;
                                 Navigator.of(context).push(
                                   CupertinoPageRoute(
@@ -133,10 +131,9 @@ class _HomeState extends State<Home> {
               valueListenable: appTransferHistory,
               builder: (_, history, _) {
                 final recent =
-                    history
-                        .where((h) => _isToday(h.completedAt))
-                        .take(5)
-                        .toList();
+                    history.where((h) => _isToday(h.completedAt)).toList()
+                      ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
+                final recentToday = recent.take(5).toList();
 
                 // ── Shared widgets ─────────────────────────────────────────
                 final deviceChip = ValueListenableBuilder<String>(
@@ -252,7 +249,7 @@ class _HomeState extends State<Home> {
                           ],
                         ),
                         Text(
-                          'v1.0.0',
+                          'v-Alpha',
                           style: TextStyle(
                             fontSize: 12,
                             color: theme.colors.mutedForeground.withAlpha(180),
@@ -279,7 +276,7 @@ class _HomeState extends State<Home> {
                 ];
 
                 // ── Empty state ────────────────────────────────────────────
-                if (recent.isEmpty) {
+                if (recentToday.isEmpty) {
                   return Column(
                     children: [
                       deviceChip,
@@ -331,13 +328,11 @@ class _HomeState extends State<Home> {
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: LItemList(
-                          borderRadius: BorderRadius.circular(14),
+                        child: Column(
+                          spacing: 8,
                           children:
-                              recent
-                                  .map(
-                                    (h) => _buildHistoryItem(context, theme, h),
-                                  )
+                              recentToday
+                                  .map((h) => TransferHistoryGroupView(item: h))
                                   .toList(),
                         ),
                       ),
@@ -357,65 +352,6 @@ class _HomeState extends State<Home> {
         ],
       ),
     );
-  }
-
-  Widget _buildHistoryItem(
-    BuildContext context,
-    FThemeData theme,
-    TransferHistoryItem h,
-  ) {
-    final icon =
-        h.isSending
-            ? HugeIcons.strokeRoundedShare03
-            : HugeIcons.strokeRoundedDownload02;
-    final sizeLabel = appDataUnit.value.formatSize(h.totalBytes);
-    return LItem(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      prefix: _buildHistoryPrefix(theme, h, icon),
-      title: Text(h.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      description: Text(
-        '${h.isSending ? 'Sent to' : 'From'} ${h.peerName}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      suffix: Text(
-        sizeLabel,
-        style: TextStyle(fontSize: 12, color: theme.colors.mutedForeground),
-      ),
-    );
-  }
-
-  Widget _buildHistoryPrefix(
-    FThemeData theme,
-    TransferHistoryItem h,
-    List<List<dynamic>> fallbackIcon,
-  ) {
-    final previewFile = _bestPreviewFile(h);
-    if (previewFile == null || previewFile.path.isEmpty) {
-      return HugeIcon(
-        icon: fallbackIcon,
-        size: 20,
-        color: theme.colors.primary,
-      );
-    }
-    return FileThumbnail(
-      path: previewFile.path,
-      name: previewFile.name,
-      size: 48,
-      borderRadius: 8,
-      iconColor: theme.colors.primary,
-    );
-  }
-
-  HistoryFileItem? _bestPreviewFile(TransferHistoryItem h) {
-    HistoryFileItem? firstExisting;
-    for (final file in h.files) {
-      if (!storedFileExists(file.path)) continue;
-      firstExisting ??= file;
-      final type = fileTypeIconData(file.name).fileType;
-      if (type == 'Image' || type == 'Video') return file;
-    }
-    return firstExisting;
   }
 
   bool _isToday(DateTime date) {

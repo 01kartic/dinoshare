@@ -245,7 +245,7 @@ class _SettingsState extends State<Settings> {
                                     control: FTextFieldControl.managed(
                                       controller: _nameController,
                                     ),
-                                    hint: 'LAFs Device',
+                                    hint: 'Dino Device',
                                     textAlign: TextAlign.end,
                                     maxLength: 32,
                                     style: FTextFieldStyleDelta.delta(
@@ -435,6 +435,19 @@ class _SettingsState extends State<Settings> {
                                       ),
                                     ),
                               ),
+                              ValueListenableBuilder<bool>(
+                                valueListenable: appNotificationsEnabled,
+                                builder:
+                                    (_, val, _) => LItem(
+                                      title: Text('Notifications'),
+                                      suffix: LSwitch(
+                                        on: val,
+                                        onPressed: () =>
+                                            setNotificationsEnabled(!val),
+                                        variant: LSwitchVariant.success,
+                                      ),
+                                    ),
+                              ),
                             ],
                           ),
                         ],
@@ -571,7 +584,7 @@ class _SettingsState extends State<Settings> {
                         ],
                       ),
                       Text(
-                        'v1.0.0',
+                        'v-Alpha',
                         style: TextStyle(
                           fontSize: 12,
                           color: theme.colors.mutedForeground.withAlpha(180),

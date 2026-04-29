@@ -97,6 +97,11 @@ Future<void> loadAppSettings() async {
   appFullPowerMode.value = savedFullPower ?? false;
   transferService.setFullPowerMode(appFullPowerMode.value);
 
+  // ── Notifications ──────────────────────────────────────────────────────────
+  final savedNotifications = prefs.getBool(_kNotificationsEnabled);
+  appNotificationsEnabled.value = savedNotifications ?? true;
+  transferService.notificationsEnabled = appNotificationsEnabled.value;
+
   // ── Onboarding ────────────────────────────────────────────────────────────
   appOnboardingDone = prefs.getBool(_kOnboardingDone) ?? false;
 
@@ -157,6 +162,31 @@ Future<void> setFullPowerMode(bool enabled) async {
   await prefs.setBool(_kFullPower, enabled);
   appFullPowerMode.value = enabled;
   transferService.setFullPowerMode(enabled);
+}
+
+Future<void> setNotificationsEnabled(bool enabled) async {
+  if (enabled) {
+    final granted = await transferService.requestNotificationPermission();
+    if (!granted) {
+      if (Platform.isMacOS) {
+        await launchUrl(
+          Uri.parse('x-apple.systempreferences:com.apple.Notifications-Settings'),
+        );
+      } else if (Platform.isIOS) {
+        await launchUrl(Uri.parse('app-settings:'));
+      }
+      return;
+    }
+  }
+
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool(_kNotificationsEnabled, enabled);
+  appNotificationsEnabled.value = enabled;
+  transferService.notificationsEnabled = enabled;
+  await transferService.showStatusNotification(
+    title: 'Notifications',
+    body: enabled ? 'Notifications are turned on.' : 'Notifications are turned off.',
+  );
 }
 
 Future<void> completeOnboarding() async {

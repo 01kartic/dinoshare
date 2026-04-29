@@ -458,10 +458,63 @@ class DinoshareTransferService {
     );
   }
 
+  bool notificationsEnabled = true;
+
+  Future<bool> requestNotificationPermission() async {
+    if (Platform.isAndroid) {
+      final granted = await _notifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission();
+      return granted ?? false;
+    }
+    if (Platform.isIOS) {
+      final granted = await _notifications
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      return granted ?? false;
+    }
+    if (Platform.isMacOS) {
+      final granted = await _notifications
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+      return granted ?? false;
+    }
+    return true;
+  }
+
+  Future<void> showStatusNotification({
+    required String title,
+    required String body,
+  }) async {
+    const android = AndroidNotificationDetails(
+      'dinoshare_transfers',
+      'Dino Transfers',
+      channelDescription: 'Transfer status alerts',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const darwin = DarwinNotificationDetails();
+    try {
+      await _notifications.show(
+        DateTime.now().millisecondsSinceEpoch % 2147483647,
+        title,
+        body,
+        const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
+      );
+    } catch (_) {}
+  }
+
   Future<void> _showNotification({
     required String title,
     required String body,
   }) async {
+    if (!notificationsEnabled) return;
     const android = AndroidNotificationDetails(
       'dinoshare_transfers',
       'Dino Transfers',
