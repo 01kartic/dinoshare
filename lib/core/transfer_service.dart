@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:bonsoir/bonsoir.dart';
 import 'package:cryptography/cryptography.dart';
 // ignore: unused_import
 import 'package:cryptography_flutter/cryptography_flutter.dart';
@@ -19,5 +20,6 @@ part 'transfer_security.dart';
 part 'transfer_socket_reader.dart';
 part 'transfer_service_core.dart';
 part 'transfer_service_discovery.dart';
+part 'transfer_service_bonjour.dart';
 part 'transfer_service_sender.dart';
 part 'transfer_service_receiver.dart';

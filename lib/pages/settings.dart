@@ -23,7 +23,6 @@ class Settings extends StatefulWidget {
 
 class _SettingsState extends State<Settings> {
   late TextEditingController _nameController;
-  String _localIp = '';
 
   static const _unitOptions = DataUnitType.values;
 
@@ -31,12 +30,6 @@ class _SettingsState extends State<Settings> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: appDeviceName.value);
-    _loadIp();
-  }
-
-  Future<void> _loadIp() async {
-    final ip = await transferService.localIpAddress();
-    if (mounted) setState(() => _localIp = ip);
   }
 
   @override
@@ -584,7 +577,7 @@ class _SettingsState extends State<Settings> {
                         ],
                       ),
                       Text(
-                        'v-Alpha',
+                        'vBeta',
                         style: TextStyle(
                           fontSize: 12,
                           color: theme.colors.mutedForeground.withAlpha(180),

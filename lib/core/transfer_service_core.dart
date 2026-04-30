@@ -41,17 +41,6 @@ class DinoshareTransferService {
       _fullPowerMode ? _kPowerLargeFileThreshold : _kNormalLargeFileThreshold;
   int get _parallelChunkSize =>
       _fullPowerMode ? _kPowerParallelChunkSize : _kNormalParallelChunkSize;
-  int get _flushThreshold =>
-      Platform.isWindows
-          ? (_fullPowerMode
-              ? _kPowerFlushThreshold * 2
-              : _kNormalFlushThreshold * 2)
-          : (_fullPowerMode ? _kPowerFlushThreshold : _kNormalFlushThreshold);
-  int get _ioChunkSize =>
-      Platform.isWindows
-          ? (_fullPowerMode ? _kPowerChunkSize * 2 : _kNormalChunkSize * 2)
-          : (_fullPowerMode ? _kPowerChunkSize : _kNormalChunkSize);
-
   // ── Internal state ───────────────────────────────────────────────────────
   final Map<String, PeerDevice> _peerMap = {};
   final Set<Socket> _activeSockets = {};
@@ -66,6 +55,11 @@ class DinoshareTransferService {
   Timer? _speedTimer;
   Timer? _etaTimer;
 
+  BonsoirBroadcast? _bonjourBroadcast;
+  BonsoirDiscovery? _bonjourDiscovery;
+  StreamSubscription<BonsoirDiscoveryEvent>? _bonjourDiscoverySub;
+  final Set<String> _bonjourPeerIds = {};
+
   bool _initialized = false;
   bool _discovering = false;
   bool _receivingEnabled = false;
@@ -75,13 +69,8 @@ class DinoshareTransferService {
   int _controlPort = 0;
 
   // Speed tracking
-  DateTime _lastByteAt = DateTime.now();
   DateTime _lastSpeedSampleAt = DateTime.now();
   int _lastSpeedBytes = 0;
-
-  // ETA tracking
-  DateTime? _etaLastCalcAt;
-  int? _etaLastRemainingBytes;
 
   // Per-session crypto
   _SessionCrypto? _sessionCrypto;
@@ -261,11 +250,8 @@ class DinoshareTransferService {
   // ─────────────────────────────────────────────────────────────────────────
 
   void _resetSpeedCounters() {
-    _lastByteAt = DateTime.now();
     _lastSpeedSampleAt = DateTime.now();
     _lastSpeedBytes = activeSession.value?.bytesTransferred ?? 0;
-    _etaLastCalcAt = null;
-    _etaLastRemainingBytes = null;
   }
 
   void _startSpeedTimer() {
@@ -293,7 +279,6 @@ class DinoshareTransferService {
       );
       _lastSpeedSampleAt = now;
       _lastSpeedBytes = session.bytesTransferred;
-      if (delta > 0) _lastByteAt = now;
     });
 
     _etaTimer = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -329,7 +314,6 @@ class DinoshareTransferService {
   // ─────────────────────────────────────────────────────────────────────────
 
   void _onBytesMoved(int bytes) {
-    _lastByteAt = DateTime.now();
     final session = activeSession.value;
     if (session == null) return;
     final next = min(session.totalBytes, session.bytesTransferred + bytes);

@@ -8,27 +8,18 @@ const int _kDiscoveryPort = 44000;
 
 // ── Normal-mode transfer constants ──────────────────────────────────────────
 const int _kNormalSocketBuffer = 4 * 1024 * 1024; // 4 MB
-const int _kNormalChunkSize = 1 * 1024 * 1024; // 1 MB reads
 const int _kNormalParallelConns = 8;
 const int _kNormalLargeFileThreshold = 10 * 1024 * 1024; // 10 MB
-const int _kNormalFlushThreshold = 4 * 1024 * 1024; // 4 MB
 
 // ── Full-power-mode transfer constants ───────────────────────────────────────
 const int _kPowerSocketBuffer = 16 * 1024 * 1024; // 16 MB
-const int _kPowerChunkSize = 4 * 1024 * 1024; // 4 MB reads
 const int _kPowerParallelConns = 16;
 const int _kPowerParallelChunkSize = 8 * 1024 * 1024; // 8 MB chunks
 const int _kNormalParallelChunkSize = 4 * 1024 * 1024; // 4 MB chunks
 const int _kPowerLargeFileThreshold = 1 * 1024 * 1024; // 1 MB
-const int _kPowerFlushThreshold = 16 * 1024 * 1024; // 16 MB
 
 // Each AES-GCM encrypted block carries this many plaintext bytes.
 const int _kEncryptChunkSize = 256 * 1024; // 256 KB
-
-// Files larger than this are split into sequential sub-chunks inside
-// _sendSingleFile so the sender receives an ACK (and updates progress)
-// every _kProgressChunkSize bytes instead of waiting for the entire file.
-const int _kProgressChunkSize = 2 * 1024 * 1024; // 2 MB
 
 // ── Security limits ──────────────────────────────────────────────────────────
 // Maximum byte length of a single plaintext handshake/control line before we
@@ -39,19 +30,6 @@ const int _kMaxLineLengthBytes = 64 * 1024; // 64 KB
 // GCM tag).  Plaintext cap ≈ this minus 28 bytes of framing overhead.
 // Must be larger than _kEncryptChunkSize + 28.
 const int _kMaxEncryptedPayloadBytes = 512 * 1024; // 512 KB
-
-// Reject transfer_request claims above this threshold before doing disk checks.
-// Prevents integer-overflow and unreasonable progress-display values.
-const int _kMaxTransferBytes = 10 * 1024 * 1024 * 1024 * 1024; // 10 TB
-
-// Only one unanswered incoming request is handled at a time to prevent a
-// spammer from flooding the pending-request map.
-const int _kMaxPendingIncoming = 1;
-
-// Upper bound on the number of parallel chunks for a single large file.
-// Limits temp-file proliferation if a malicious sender sends an unrealistic
-// totalChunks value.
-const int _kMaxChunks = 256;
 
 // ── Platform-specific socket option constants ────────────────────────────────
 // macOS/iOS/BSD  : SOL_SOCKET=0xFFFF, SO_SNDBUF=0x1001, SO_RCVBUF=0x1002

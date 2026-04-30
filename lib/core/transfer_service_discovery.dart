@@ -11,21 +11,32 @@ extension DiscoveryX on DinoshareTransferService {
     _discovering = true;
     await _refreshDiscoveryTargets();
     await _ensureDiscoverySocket();
-    await _joinMulticast();
-    _sendDiscoverPing();
+    try {
+      await _joinMulticast();
+    } catch (_) {}
+    try {
+      _sendDiscoverPing();
+    } catch (_) {}
+    unawaited(_startBonjourDiscovery());
     _discoverTimer?.cancel();
     _discoverTimer = Timer.periodic(
       const Duration(seconds: 2),
-      (_) => _sendDiscoverPing(),
+      (_) {
+        runZonedGuarded(() => _sendDiscoverPing(), (_, _) {});
+      },
     );
     _peerPruneTimer?.cancel();
     _peerPruneTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      final now = DateTime.now();
-      _peerMap.removeWhere(
-        (_, peer) => now.difference(peer.lastSeen) > const Duration(seconds: 6),
-      );
-      discoveredPeers.value =
-          _peerMap.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      runZonedGuarded(() {
+        final now = DateTime.now();
+        _peerMap.removeWhere(
+          (id, peer) =>
+              !_bonjourPeerIds.contains(id) &&
+              now.difference(peer.lastSeen) > const Duration(seconds: 6),
+        );
+        discoveredPeers.value =
+            _peerMap.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      }, (_, _) {});
     });
   }
 
@@ -36,19 +47,25 @@ extension DiscoveryX on DinoshareTransferService {
     _discoverTimer = null;
     _peerPruneTimer = null;
     _peerMap.clear();
+    _bonjourPeerIds.clear();
     discoveredPeers.value = [];
     if (_multicastJoined && !_receivingEnabled) await _leaveMulticast();
+    unawaited(_stopBonjourDiscovery());
   }
 
   Future<void> _ensureDiscoverySocket() async {
     if (_discoverySocket != null) return;
-    _discoverySocket = await RawDatagramSocket.bind(
-      InternetAddress.anyIPv4,
-      _kDiscoveryPort,
-      reuseAddress: true,
-    );
-    _discoverySocket!.broadcastEnabled = true;
-    _discoverySocket!.listen(_handleDiscoveryEvent);
+    try {
+      _discoverySocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        _kDiscoveryPort,
+        reuseAddress: true,
+      );
+      _discoverySocket!.broadcastEnabled = true;
+      _discoverySocket!.listen(_handleDiscoveryEvent, onError: (_) {});
+    } catch (_) {
+      _discoverySocket = null;
+    }
   }
 
   Future<void> _joinMulticast() async {

@@ -24,10 +24,12 @@ extension ReceiverX on DinoshareTransferService {
     await _ensureDiscoverySocket();
     await _joinMulticast();
     _discoverySocket?.readEventsEnabled = true;
+    unawaited(_startBonjourBroadcast());
   }
 
   Future<void> stopReceiver() async {
     _receivingEnabled = false;
+    unawaited(_stopBonjourBroadcast());
     await _controlServer?.close();
     _controlServer = null;
     for (final pending in _pendingIncoming.values) {

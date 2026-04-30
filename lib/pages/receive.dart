@@ -16,7 +16,7 @@ class Receive extends StatefulWidget {
   State<Receive> createState() => _ReceiveState();
 }
 
-class _ReceiveState extends State<Receive> {
+class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   var _scrollOffset = 0.0;
   bool _accepting = false;
@@ -24,6 +24,7 @@ class _ReceiveState extends State<Receive> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     if (!appAlwaysReceive.value) {
       transferService.startReceiver(deviceName: appDeviceName.value);
@@ -34,11 +35,19 @@ class _ReceiveState extends State<Receive> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     if (!appAlwaysReceive.value) {
       transferService.stopReceiver();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && !appAlwaysReceive.value) {
+      transferService.startReceiver(deviceName: appDeviceName.value);
+    }
   }
 
   Future<void> _accept(IncomingTransferRequest request) async {

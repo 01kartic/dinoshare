@@ -105,7 +105,7 @@ class _OnboardingState extends State<Onboarding> {
                       ),
                     ),
                     Text(
-                      'Dino Share',
+                      'DinoShare',
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w700,

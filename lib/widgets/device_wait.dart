@@ -24,7 +24,6 @@ class _LDeviceWaitState extends State<LDeviceWait>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _tween;
-  bool _isForward = true;
 
   @override
   void initState() {
@@ -36,13 +35,9 @@ class _LDeviceWaitState extends State<LDeviceWait>
     _tween = CurvedAnimation(parent: _controller, curve: Curves.easeInOutCubic);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        // expand -> squeeze done, now squeeze -> expand
-        _isForward = false;
         _controller.duration = const Duration(milliseconds: 1500);
         _controller.reverse();
       } else if (status == AnimationStatus.dismissed) {
-        // squeeze -> expand done, now expand -> squeeze
-        _isForward = true;
         _controller.duration = const Duration(milliseconds: 2000);
         _controller.forward();
       }

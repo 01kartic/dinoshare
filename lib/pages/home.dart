@@ -249,7 +249,7 @@ class _HomeState extends State<Home> {
                           ],
                         ),
                         Text(
-                          'v-Alpha',
+                          'vBeta',
                           style: TextStyle(
                             fontSize: 12,
                             color: theme.colors.mutedForeground.withAlpha(180),

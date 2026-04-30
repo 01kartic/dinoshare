@@ -232,7 +232,8 @@ class _DevicePickerSheet extends StatefulWidget {
   State<_DevicePickerSheet> createState() => _DevicePickerSheetState();
 }
 
-class _DevicePickerSheetState extends State<_DevicePickerSheet> {
+class _DevicePickerSheetState extends State<_DevicePickerSheet>
+    with WidgetsBindingObserver {
   String? _pendingPeerId;
   bool _navigated = false;
   String? _errorMessage;
@@ -240,15 +241,24 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     transferService.startDiscovery();
     transferService.activeSession.addListener(_onSessionChanged);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     transferService.activeSession.removeListener(_onSessionChanged);
     transferService.stopDiscovery();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      transferService.startDiscovery();
+    }
   }
 
   void _onSessionChanged() {

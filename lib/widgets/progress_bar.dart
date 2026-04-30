@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:dinoshare/widgets/button.dart';
@@ -136,9 +138,9 @@ class _LProgressbarState extends State<LProgressbar>
                       ),
                     ),
                     Positioned(
-                      left: 11,
+                      left: Platform.isMacOS || Platform.isIOS ? 15 : 20,
                       top: 0,
-                      bottom: 2,
+                      bottom: Platform.isMacOS || Platform.isIOS ? 2 : 0.5,
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -148,6 +150,7 @@ class _LProgressbarState extends State<LProgressbar>
                             fontWeight: FontWeight.w400,
                             color: theme.colors.mutedForeground,
                             fontFeatures: [FontFeature.tabularFigures()],
+                            height: 1.2
                           ),
                         ),
                       ),
@@ -179,6 +182,7 @@ class _LProgressbarState extends State<LProgressbar>
                             widget.label,
                             style: TextStyle(
                               fontFeatures: [FontFeature.tabularFigures()],
+                              height: 1.2
                             ),
                           ),
                         ),
