@@ -9,6 +9,7 @@ import 'package:dinoshare/widgets/button.dart';
 import 'package:dinoshare/widgets/file_thumbnail.dart';
 import 'package:dinoshare/widgets/header.dart';
 import 'package:dinoshare/widgets/items.dart';
+import 'package:dinoshare/widgets/incoming_transfer_overlay.dart';
 
 class TransferDone extends StatelessWidget {
   const TransferDone({super.key, required this.session});
@@ -40,9 +41,10 @@ class TransferDone extends StatelessWidget {
     final durationLabel = _formatDuration(duration);
     final isStopped = session.status == TransferStatus.stopped;
 
-    return Container(
-      color: theme.colors.secondary,
-      child: Column(
+    return IncomingTransferOverlay(
+      child: Container(
+        color: theme.colors.secondary,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           DHeader(
@@ -142,6 +144,7 @@ class TransferDone extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

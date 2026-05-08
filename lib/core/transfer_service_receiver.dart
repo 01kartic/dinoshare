@@ -247,6 +247,17 @@ extension ReceiverX on DinoshareTransferService {
       senderFullPower: senderFullPower,
     );
     debugPrint('[TransferService] Incoming request from $senderName, sessionId=$sessionId');
+
+    if (isFavouriteDevice(senderId)) {
+      debugPrint('[TransferService] Sender $senderName is a favourite device, auto-accepting');
+      _pendingIncoming[sessionId] = _PendingIncoming(
+        request: incoming,
+        socket: socket,
+      );
+      await respondToIncoming(sessionId: sessionId, accept: true);
+      return;
+    }
+
     _pendingIncoming[sessionId] = _PendingIncoming(
       request: incoming,
       socket: socket,

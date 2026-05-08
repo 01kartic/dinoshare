@@ -9,6 +9,7 @@ import 'package:dinoshare/state/state_index.dart';
 import 'package:dinoshare/widgets/button.dart';
 import 'package:dinoshare/widgets/header.dart';
 import 'package:dinoshare/widgets/transfer_history_group.dart';
+import 'package:dinoshare/widgets/incoming_transfer_overlay.dart';
 
 class History extends StatefulWidget {
   const History({super.key});
@@ -22,9 +23,10 @@ class _HistoryState extends State<History> {
   Widget build(BuildContext context) {
     final theme = context.theme;
 
-    return Container(
-      color: theme.colors.secondary,
-      child: Column(
+    return IncomingTransferOverlay(
+      child: Container(
+        color: theme.colors.secondary,
+        child: Column(
         children: [
           DHeader(
             nested: true,
@@ -52,9 +54,9 @@ class _HistoryState extends State<History> {
                 final groups = _groupHistory(history);
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
-                    20,
+                    16,
                     8,
-                    20,
+                    16,
                     Platform.isAndroid ? 24 : 16,
                   ),
                   children: [
@@ -80,6 +82,7 @@ class _HistoryState extends State<History> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

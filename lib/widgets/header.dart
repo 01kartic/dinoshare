@@ -66,7 +66,7 @@ class _DHeaderState extends State<DHeader> with SingleTickerProviderStateMixin {
           isDesktop()
               ? DTextSize.h3
               : widget.nested
-              ? DTextSize.h1
+              ? DTextSize.h2
               : DTextSize.title,
       color: theme.colors.secondaryForeground,
     );

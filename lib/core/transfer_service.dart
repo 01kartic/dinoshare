@@ -14,6 +14,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../state/state_index.dart';
+
 part 'transfer_constants.dart';
 part 'transfer_models.dart';
 part 'transfer_crypto.dart';

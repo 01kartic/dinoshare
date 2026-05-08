@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_inset_shadow/flutter_inset_shadow.dart' as inset;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 
@@ -162,6 +163,7 @@ class _DButtonState extends State<DButton> {
         (widget.child is HugeIcon ||
             widget.child is Icon ||
             widget.child is Image ||
+            widget.child is SvgPicture ||
             widget.child.runtimeType.toString() == 'FIcon');
     final double? width = isIconOnly ? height : null;
     if (isIconOnly) {
@@ -391,7 +393,8 @@ class _DButtonState extends State<DButton> {
       widget.child is HugeIcon ||
               widget.child is Icon ||
               widget.child.runtimeType.toString() == 'FIcon' ||
-              widget.child is Image
+              widget.child is Image ||
+              widget.child is SvgPicture
           ? wrapIcon(widget.child)
           : labelWidget(widget.child),
     );

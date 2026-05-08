@@ -98,7 +98,7 @@ extension SenderX on DinoshareTransferService {
         'sessionId': sessionId,
         'senderId': peer.id,
         'senderName': senderName,
-        'senderDeviceType': peer.deviceType,
+        'senderDeviceType': _getDeviceTypeString(),
         'pubKey': base64Encode(_sessionCrypto!.publicKeyBytes),
         'fullPower': _fullPowerMode,
         'controlPort': _controlPort,

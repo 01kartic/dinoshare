@@ -1,27 +1,25 @@
-import 'dart:io';
-
 import 'package:dinoshare/pages/transfer.dart';
 import 'package:dinoshare/state/state_index.dart';
 import 'package:dinoshare/style/svgs.dart';
 import 'package:dinoshare/style/theme.dart';
 import 'package:dinoshare/style/typography.dart';
 import 'package:dinoshare/widgets/button.dart';
-import 'package:dinoshare/widgets/device_wait.dart';
-import 'package:dinoshare/widgets/header.dart';
 import 'package:dinoshare/widgets/stacked_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 
-class Receive extends StatefulWidget {
-  const Receive({super.key});
+class IncomingTransferOverlay extends StatefulWidget {
+  const IncomingTransferOverlay({super.key, required this.child});
+
+  final Widget child;
 
   @override
-  State<Receive> createState() => _ReceiveState();
+  State<IncomingTransferOverlay> createState() => _IncomingTransferOverlayState();
 }
 
-class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
+class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
   bool _accepting = false;
   bool _starToggled = false;
   bool _navigatedToTransfer = false;
@@ -29,17 +27,24 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    transferService.incomingRequest.addListener(_onIncomingRequest);
+    transferService.incomingRequest.addListener(_onIncomingRequestChanged);
     transferService.activeSession.addListener(_onSessionChanged);
-    if (!appAlwaysReceive.value) {
-      transferService.startReceiver(deviceName: appDeviceName.value);
-    }
   }
 
-  void _onIncomingRequest() {
+  @override
+  void dispose() {
+    transferService.incomingRequest.removeListener(_onIncomingRequestChanged);
+    transferService.activeSession.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onIncomingRequestChanged() {
+    if (!mounted) return;
+
     setState(() {
+      _accepting = false;
       _starToggled = false;
+      _navigatedToTransfer = false;
     });
   }
 
@@ -60,26 +65,6 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    transferService.incomingRequest.removeListener(_onIncomingRequest);
-    transferService.activeSession.removeListener(_onSessionChanged);
-    if (!appAlwaysReceive.value) {
-      transferService.stopReceiver();
-    }
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
-        mounted &&
-        !appAlwaysReceive.value) {
-      transferService.startReceiver(deviceName: appDeviceName.value);
-    }
-  }
-
   Future<void> _accept(IncomingTransferRequest request) async {
     if (_accepting) return;
     setState(() => _accepting = true);
@@ -90,16 +75,14 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
     );
     if (!mounted) return;
     setState(() => _accepting = false);
-    if (ok) {
-      if (starToggled) {
-        await addFavouriteDevice(
-          FavouriteDevice(
-            id: request.senderId,
-            name: request.senderName,
-            deviceType: request.senderDeviceType,
-          ),
-        );
-      }
+    if (ok && starToggled) {
+      await addFavouriteDevice(
+        FavouriteDevice(
+          id: request.senderId,
+          name: request.senderName,
+          deviceType: request.senderDeviceType,
+        ),
+      );
     }
   }
 
@@ -108,7 +91,11 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
       sessionId: request.sessionId,
       accept: false,
     );
-    _starToggled = false;
+    if (!mounted) return;
+    setState(() {
+      _accepting = false;
+      _starToggled = false;
+    });
   }
 
   void _toggleFavorite() {
@@ -121,43 +108,24 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = context.theme;
 
-    return Container(
-      color: theme.colors.secondary,
-      child: Stack(
-        children: [
-          Column(
-            children: [
-              DHeader(
-                nested: true,
-                prefix: [
-                  DButton(
-                    size: Platform.isMacOS ? DButtonSize.sm : DButtonSize.md,
-                    variant: DButtonVariant.ghost,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: HugeIcon(
-                      icon: HugeIcons.strokeRoundedArrowLeft01,
-                      size: Platform.isMacOS ? 20 : 24,
-                    ),
-                  ),
-                ],
-                title: 'Receive',
+    return ValueListenableBuilder<IncomingTransferRequest?>(
+      valueListenable: transferService.incomingRequest,
+      builder: (_, request, child) {
+        final base = child ?? const SizedBox.shrink();
+        if (request == null) return base;
+
+        return Stack(
+          children: [
+            base,
+            Positioned.fill(
+              child: StackedDialog(
+                children: [_buildRequestDialog(theme, request)],
               ),
-              Expanded(child: _ReceiveWaitingBody(theme: theme)),
-            ],
-          ),
-          ValueListenableBuilder<IncomingTransferRequest?>(
-            valueListenable: transferService.incomingRequest,
-            builder: (_, request, _) {
-              if (request == null) return const SizedBox.shrink();
-              return Positioned.fill(
-                child: StackedDialog(
-                  children: [_buildRequestDialog(theme, request)],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+            ),
+          ],
+        );
+      },
+      child: widget.child,
     );
   }
 
@@ -318,95 +286,5 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
       default:
         return HugeIcons.strokeRoundedSmartPhone02;
     }
-  }
-}
-
-class _ReceiveWaitingBody extends StatelessWidget {
-  final FThemeData theme;
-
-  const _ReceiveWaitingBody({required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 52),
-      child: Column(
-        spacing: 40,
-        children: [
-          _ReceiveIdentity(theme: theme),
-          Expanded(
-            child: Center(
-              child: SizedBox(
-                width: 352,
-                height: 352,
-                child: DeviceWait(
-                  variant: DeviceWaitVariant.primary,
-                  child: HugeIcon(
-                    icon: HugeIcons.strokeRoundedSmartPhone01,
-                    color: theme.colors.primaryForeground,
-                    size: 40,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          DText(
-            'Wait for another\ndevice to share',
-            color: theme.colors.mutedForeground.withValues(alpha: 0.5),
-            weight: FontWeight.w500,
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-}
-
-class _ReceiveIdentity extends StatelessWidget {
-  final FThemeData theme;
-
-  const _ReceiveIdentity({required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: appDeviceName,
-      builder:
-          (_, name, _) => Column(
-            spacing: 4,
-            children: [
-              DText(
-                name,
-                size: DTextSize.h1,
-                color: theme.colors.foreground,
-                textAlign: TextAlign.center,
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: theme.colors.border),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: DText(
-                  _deviceTypeLabel(),
-                  color: theme.colors.mutedForeground,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  String _deviceTypeLabel() {
-    if (Platform.isAndroid) return 'Android';
-    if (Platform.isIOS) return 'iPhone';
-    if (Platform.isMacOS) return 'Mac';
-    if (Platform.isWindows) return 'Windows PC';
-    return 'Device';
   }
 }
