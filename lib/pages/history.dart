@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dinoshare/style/typography.dart';
+import 'package:dinoshare/widgets/alert_dialog.dart';
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
@@ -27,61 +28,60 @@ class _HistoryState extends State<History> {
       child: Container(
         color: theme.colors.secondary,
         child: Column(
-        children: [
-          DHeader(
-            nested: true,
-            prefix: [
-              DButton(
-                size: Platform.isMacOS ? DButtonSize.sm : DButtonSize.md,
-                variant: DButtonVariant.ghost,
-                onPressed: () => Navigator.of(context).pop(),
-                child: HugeIcon(
-                  icon: HugeIcons.strokeRoundedArrowLeft01,
-                  size: Platform.isMacOS ? 20 : 24,
-                ),
-              ),
-            ],
-            title: 'History',
-          ),
-          Expanded(
-            child: ValueListenableBuilder<List<TransferHistoryItem>>(
-              valueListenable: appTransferHistory,
-              builder: (_, history, _) {
-                if (history.isEmpty) {
-                  return _buildEmptyState(theme);
-                }
-
-                final groups = _groupHistory(history);
-                return ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    8,
-                    16,
-                    Platform.isAndroid ? 24 : 16,
+          children: [
+            DHeader(
+              nested: true,
+              prefix: [
+                DButton(
+                  size: Platform.isMacOS ? DButtonSize.sm : DButtonSize.md,
+                  variant: DButtonVariant.ghost,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: HugeIcon(
+                    icon: HugeIcons.strokeRoundedArrowLeft01,
+                    size: Platform.isMacOS ? 20 : 24,
                   ),
-                  children: [
-                    for (final group in groups) ...[
-                      _buildSectionHeader(theme, group.label),
-                      Column(
-                        spacing: 8,
-                        children: group.items.map(_buildHistoryGroup).toList(),
-                      ),
-                    ],
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: DButton(
-                        variant: DButtonVariant.destructive,
-                        size: DButtonSize.sm,
-                        onPressed: clearTransferHistory,
-                        child: Text('Delete History'),
-                      ),
-                    ),
-                  ],
-                );
-              },
+                ),
+              ],
+              title: 'History',
+              suffix: [
+                DButton(
+                  size: Platform.isMacOS ? DButtonSize.sm : DButtonSize.md,
+                  variant: DButtonVariant.ghost,
+                  onPressed: () => _confirmClearHistory(context),
+                  child: HugeIcon(
+                    icon: HugeIcons.strokeRoundedDelete02,
+                    size: Platform.isMacOS ? 20 : 24,
+                    color: theme.colors.destructive,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+            Expanded(
+              child: ValueListenableBuilder<List<TransferHistoryItem>>(
+                valueListenable: appTransferHistory,
+                builder: (_, history, _) {
+                  if (history.isEmpty) {
+                    return _buildEmptyState(theme);
+                  }
+
+                  final groups = _groupHistory(history);
+                  return ListView(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    children: [
+                      for (final group in groups) ...[
+                        _buildSectionHeader(theme, group.label),
+                        Column(
+                          spacing: 8,
+                          children:
+                              group.items.map(_buildHistoryGroup).toList(),
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -135,7 +135,7 @@ class _HistoryState extends State<History> {
 
   Widget _buildSectionHeader(FThemeData theme, String label) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(8, 16, 8, 8),
+      padding: EdgeInsets.all(8),
       child: Text(
         label,
         style: theme.typography.sm.copyWith(
@@ -150,6 +150,37 @@ class _HistoryState extends State<History> {
 
   Widget _buildHistoryGroup(TransferHistoryItem h) {
     return TransferHistoryGroupView(item: h);
+  }
+
+  void _confirmClearHistory(BuildContext context) {
+    showDAlertDialog(
+      context,
+      icon: HugeIcons.strokeRoundedDelete02,
+      iconColor: context.theme.colors.destructive,
+      title: 'Clear History',
+      description: TextSpan(
+        style: TextStyle(color: context.theme.colors.mutedForeground),
+        children: [
+          const TextSpan(text: 'This will delete all transfer history. '),
+          TextSpan(
+            text: 'This action cannot be undone.',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+      actions: [
+        DAlertDialogAction(
+          label: 'Cancel',
+          variant: DButtonVariant.outline,
+          onPressed: () {},
+        ),
+        DAlertDialogAction(
+          label: 'Clear',
+          variant: DButtonVariant.destructive,
+          onPressed: clearTransferHistory,
+        ),
+      ],
+    );
   }
 
   String _sectionLabel(DateTime date) {

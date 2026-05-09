@@ -13,7 +13,7 @@ Future<String> getDefaultDeviceName() async {
     if (Platform.isWindows) return (await info.windowsInfo).computerName;
     if (Platform.isLinux) return (await info.linuxInfo).name;
   } catch (_) {}
-  return 'LAFs Device';
+  return 'Dino Device';
 }
 
 Future<String> _getDeviceTypeLabel() async {
@@ -58,7 +58,6 @@ Future<void> loadAppSettings() async {
 
   // ── Receive path ──────────────────────────────────────────────────────────
   var savedPath = prefs.getString(_kReceivePath);
-  // Clear any stale macOS sandboxed-container or old LAFs-subfolder paths.
   if (Platform.isMacOS && savedPath != null) {
     if (savedPath.contains('/Library/Containers/') ||
         savedPath.endsWith('/Dino') ||
@@ -137,7 +136,7 @@ Future<void> setReceivePath(String? path) async {
 
 Future<void> setDeviceName(String name) async {
   final trimmed = name.trim();
-  final value = trimmed.isEmpty ? 'LAFs Device' : trimmed;
+  final value = trimmed.isEmpty ? 'Dino Device' : trimmed;
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(_kDeviceName, value);
   appDeviceName.value = value;

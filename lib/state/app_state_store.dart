@@ -14,7 +14,7 @@ const String _kNotificationsEnabled = 'notifications_enabled';
 // ── Global ValueNotifiers ────────────────────────────────────────────────────
 
 /// Current app theme mode (persisted by AppThemeController in theme.dart).
-final ValueNotifier<String> appDeviceName = ValueNotifier('LAFs Device');
+final ValueNotifier<String> appDeviceName = ValueNotifier('Dino Device');
 final ValueNotifier<String> appDeviceTypeLabel = ValueNotifier('Device');
 final ValueNotifier<String?> appReceivePath = ValueNotifier(null);
 final ValueNotifier<DataUnitType> appDataUnit = ValueNotifier(

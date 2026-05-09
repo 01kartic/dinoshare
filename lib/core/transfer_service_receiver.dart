@@ -9,7 +9,7 @@ extension ReceiverX on DinoshareTransferService {
   Future<void> startReceiver({required String deviceName}) async {
     debugPrint('[TransferService] startReceiver called with deviceName=$deviceName');
     await initialize();
-    _deviceName = deviceName.trim().isEmpty ? 'LAFs Device' : deviceName.trim();
+    _deviceName = deviceName.trim().isEmpty ? 'Dino Device' : deviceName.trim();
     if (_receivingEnabled && _controlServer != null) {
       debugPrint('[TransferService] Receiver already running, returning');
       return;

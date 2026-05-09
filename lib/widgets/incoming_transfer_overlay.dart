@@ -191,7 +191,7 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
               ),
               DButton(
                 size: DButtonSize.sm,
-                variant: DButtonVariant.outline,
+                variant: DButtonVariant.ghost,
                 onPressed: _toggleFavorite,
                 child:
                     _starToggled || alreadyFavorite
