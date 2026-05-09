@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/widgets.dart';
 import 'package:dinoshare/style/typography.dart';
 import 'package:dinoshare/widgets/button.dart';
@@ -32,7 +33,7 @@ class DAlertDialog extends StatelessWidget {
   final TextSpan? description;
   final List<DAlertDialogAction> actions;
 
-  @override
+@override
   Widget build(BuildContext context) {
     assert(actions.length <= 3, 'Maximum 3 actions allowed');
     final theme = context.theme;
@@ -42,10 +43,13 @@ class DAlertDialog extends StatelessWidget {
         Positioned.fill(
           child: GestureDetector(
             onTap: () => Navigator.of(context).pop(),
-            child: IgnorePointer(
-              child: ColoredBox(
-                color: theme.colors.foreground.withValues(alpha: 0.18),
-                child: const SizedBox.expand(),
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                child: ColoredBox(
+                  color: theme.colors.foreground.withValues(alpha: 0.18),
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),
