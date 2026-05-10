@@ -1,5 +1,5 @@
 import 'package:dinoshare/util/utility_function.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:forui/forui.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -59,6 +59,7 @@ class DText extends StatelessWidget {
     final textStyle = GoogleFonts.inter(
       textStyle: baseStyle,
       fontWeight: effectiveWeight,
+      fontFeatures: fontFeatures,
     );
     final strutStyle = StrutStyle(
       fontFamily: textStyle.fontFamily,

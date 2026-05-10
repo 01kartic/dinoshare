@@ -139,20 +139,15 @@ class _DProgressbarState extends State<DProgressbar>
                       ),
                     ),
                     Positioned(
-                      left: Platform.isMacOS || Platform.isIOS ? 15 : 20,
+                      left: 12,
                       top: 0,
-                      bottom: Platform.isMacOS || Platform.isIOS ? 2 : 0.5,
+                      bottom: 2,
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
+                        child: DText(
                           widget.label,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: theme.colors.mutedForeground,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                            height: 1.2,
-                          ),
+                          color: theme.colors.mutedForeground,
+                          fontFeatures: [FontFeature.tabularFigures()],
                         ),
                       ),
                     ),

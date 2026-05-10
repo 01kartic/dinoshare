@@ -371,6 +371,7 @@ class _DButtonState extends State<DButton> {
           maxLines: child.maxLines,
           overflow: child.overflow,
           softWrap: child.softWrap,
+          fontFeatures: child.fontFeatures,
         );
       }
       if (child is Text) {
@@ -384,6 +385,7 @@ class _DButtonState extends State<DButton> {
           maxLines: child.maxLines,
           overflow: child.overflow,
           softWrap: child.softWrap ?? true,
+          fontFeatures: child.style?.fontFeatures ?? [],
         );
       }
       return child;
