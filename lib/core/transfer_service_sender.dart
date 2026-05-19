@@ -13,7 +13,6 @@ extension SenderX on DinoshareTransferService {
   }) async {
     _localStopRequested = false;
     if (selection.files.isEmpty) return TransferStatus.failed;
-    final isTextOnly = selection.files.every((file) => file.isText);
 
     final sessionId = _buildSessionId();
     final started = DateTime.now();
@@ -50,25 +49,23 @@ extension SenderX on DinoshareTransferService {
             )
             .toList();
 
-    if (!isTextOnly) {
-      activeSession.value = TransferSession(
-        sessionId: sessionId,
-        role: TransferRole.sending,
-        status: TransferStatus.requesting,
-        peerName: peer.name,
-        totalBytes: selection.totalBytes,
-        bytesTransferred: 0,
-        currentFile: null,
-        currentSpeedBytesPerSec: 0,
-        peakSpeedBytesPerSec: 0,
-        topLevelCount: selection.topLevelCount,
-        startedAt: started,
-        completedItems: const [],
-        allItems: allItems,
-        files: selection.files,
-      );
-      _startSpeedTimer();
-    }
+    activeSession.value = TransferSession(
+      sessionId: sessionId,
+      role: TransferRole.sending,
+      status: TransferStatus.requesting,
+      peerName: peer.name,
+      totalBytes: selection.totalBytes,
+      bytesTransferred: 0,
+      currentFile: null,
+      currentSpeedBytesPerSec: 0,
+      peakSpeedBytesPerSec: 0,
+      topLevelCount: selection.topLevelCount,
+      startedAt: started,
+      completedItems: const [],
+      allItems: allItems,
+      files: selection.files,
+    );
+    _startSpeedTimer();
 
     _peerAddress = peer.address;
     _peerControlPort = peer.port;
@@ -179,7 +176,23 @@ extension SenderX on DinoshareTransferService {
       return TransferStatus.failed;
     }
 
-    if (isTextOnly) {
+    if (selection.files.every((file) => file.isText)) {
+      _setSessionStatus(TransferStatus.inProgress);
+      _currentTransferFiles = selection.files;
+      for (final file in selection.files) {
+        _appendCompleted(
+          TransferCompletedItem(
+            name: file.name,
+            path: '',
+            sizeBytes: file.sizeBytes,
+            relativePath: file.relativePath,
+            topLevelName: file.topLevelName,
+          ),
+        );
+      }
+      activeSession.value = activeSession.value?.copyWith(
+        bytesTransferred: selection.totalBytes,
+      );
       _finishSession(status: TransferStatus.completed);
       return TransferStatus.completed;
     }

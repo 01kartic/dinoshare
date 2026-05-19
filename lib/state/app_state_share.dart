@@ -235,13 +235,6 @@ Future<bool> addClipboardTextShareTarget({bool reset = false}) async {
   return addTextShareTarget(text: data?.text ?? '', reset: reset);
 }
 
-void markShareTargetSent(String id) {
-  appShareItems.value =
-      appShareItems.value
-          .map((item) => item.id == id ? item.copyWith(isSent: true) : item)
-          .toList();
-}
-
 Future<void> _addDirectory(
   String norm,
   List<SelectedShareItem> nextItems,

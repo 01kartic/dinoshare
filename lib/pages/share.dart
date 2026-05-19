@@ -121,31 +121,20 @@ class _ShareState extends State<Share> {
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
-                                              suffix:
-                                                  item.isSent
-                                                      ? HugeIcon(
-                                                        icon:
-                                                            HugeIcons
-                                                                .strokeRoundedTick02,
-                                                        size: 16,
-                                                        color: lCustom.success,
-                                                        strokeWidth: 2,
-                                                      )
-                                                      : GestureDetector(
-                                                        onTap:
-                                                            () =>
-                                                                removeShareTarget(
-                                                                  item.id,
-                                                                ),
-                                                        child: HugeIcon(
-                                                          icon:
-                                                              HugeIcons
-                                                                  .strokeRoundedCancel01,
-                                                          size: 16,
-                                                          color: lCustom.ring,
-                                                          strokeWidth: 2,
-                                                        ),
-                                                      ),
+                                              suffix: GestureDetector(
+                                                onTap:
+                                                    () => removeShareTarget(
+                                                      item.id,
+                                                    ),
+                                                child: HugeIcon(
+                                                  icon:
+                                                      HugeIcons
+                                                          .strokeRoundedCancel01,
+                                                  size: 16,
+                                                  color: lCustom.ring,
+                                                  strokeWidth: 2,
+                                                ),
+                                              ),
                                               padding: EdgeInsets.symmetric(
                                                 horizontal: 16,
                                                 vertical: 10,
@@ -208,9 +197,6 @@ class _ShareState extends State<Share> {
   }
 
   void _openDeviceSheet(BuildContext context) {
-    final items = appShareItems.value;
-    final sentTextItemId =
-        items.length == 1 && items.first.isText ? items.first.id : null;
     showFSheet(
       side: FLayout.btt,
       context: context,
@@ -228,11 +214,7 @@ class _ShareState extends State<Share> {
               ),
             ),
       ),
-      builder:
-          (sheetCtx) => _DevicePickerSheet(
-            parentContext: context,
-            sentTextItemId: sentTextItemId,
-          ),
+      builder: (sheetCtx) => _DevicePickerSheet(parentContext: context),
     );
   }
 }
@@ -242,13 +224,9 @@ class _ShareState extends State<Share> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DevicePickerSheet extends StatefulWidget {
-  const _DevicePickerSheet({
-    required this.parentContext,
-    required this.sentTextItemId,
-  });
+  const _DevicePickerSheet({required this.parentContext});
 
   final BuildContext parentContext;
-  final String? sentTextItemId;
 
   @override
   State<_DevicePickerSheet> createState() => _DevicePickerSheetState();
@@ -320,26 +298,11 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
       _errorMessage = null;
     });
     final selection = currentSelection();
-    final isTextOnly = selection.files.every((file) => file.isText);
-    final status = await transferService.sendTransferRequest(
+    await transferService.sendTransferRequest(
       peer: peer,
       selection: selection,
       senderName: appDeviceName.value,
     );
-    if (!mounted) return;
-    if (isTextOnly && status == TransferStatus.completed) {
-      if (widget.sentTextItemId != null) {
-        markShareTargetSent(widget.sentTextItemId!);
-      }
-      Navigator.of(context).pop();
-      return;
-    }
-    if (isTextOnly && status == TransferStatus.rejected) {
-      setState(() {
-        _pendingPeerId = null;
-        _errorMessage = 'Receiver declined the transfer.';
-      });
-    }
   }
 
   @override
