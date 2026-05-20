@@ -1,6 +1,7 @@
 import 'package:dinoshare/style/typography.dart';
 import 'package:dinoshare/pages/folder_details.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 
@@ -76,29 +77,41 @@ class TransferHistoryGroupView extends StatelessWidget {
     FThemeData theme,
     _HistoryDisplayItem file,
   ) {
+    final isTextItem = file.path.isEmpty && !file.isFolder;
+    final textContent = isTextItem ? file.children.first.textContent : null;
     final fileExists = file.path.isNotEmpty && storedFileExists(file.path);
     final directionLabel =
         item.isSending ? 'To ${item.peerName}' : 'From ${item.peerName}';
 
     return DItem(
-      padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
+      padding: isTextItem ? null : EdgeInsets.fromLTRB(8, 8, 16, 8),
       spacing: 12,
-      prefix: _buildFilePreview(theme, file),
+      prefix: isTextItem ? Padding(
+        padding: EdgeInsets.fromLTRB(7, 0, 15, 0),
+        child: HugeIcon(
+          icon: HugeIcons.strokeRoundedText,
+          size: 20,
+          color: theme.colors.primary,
+        ),
+      ) : _buildFilePreview(theme, file),
       title: DText(
         file.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         weight: FontWeight.w500,
       ),
-      description: DText(
-        file.isFolder
-            ? directionLabel
-            : appDataUnit.value.formatSize(file.sizeBytes),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        color: theme.colors.mutedForeground,
-        weight: FontWeight.w400,
-      ),
+      description:
+          file.path.isEmpty && !file.isFolder
+              ? null
+              : DText(
+                  file.isFolder
+                      ? directionLabel
+                      : appDataUnit.value.formatSize(file.sizeBytes),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  color: theme.colors.mutedForeground,
+                  weight: FontWeight.w400,
+                ),
       suffix:
           file.isFolder
               ? HugeIcon(
@@ -110,6 +123,8 @@ class TransferHistoryGroupView extends StatelessWidget {
       onPressed:
           file.isFolder
               ? () => _openFolder(context, file, directionLabel)
+              : isTextItem && textContent != null
+              ? () => Clipboard.setData(ClipboardData(text: textContent))
               : fileExists
               ? () => openStoredFile(file.path)
               : null,
@@ -117,6 +132,16 @@ class TransferHistoryGroupView extends StatelessWidget {
   }
 
   Widget _buildFilePreview(FThemeData theme, _HistoryDisplayItem file) {
+    if (file.path.isEmpty && !file.isFolder) {
+      return Padding(
+        padding: EdgeInsets.all(12),
+        child: HugeIcon(
+          icon: HugeIcons.strokeRoundedText,
+          size: 24,
+          color: theme.colors.primary,
+        ),
+      );
+    }
     if (!file.isFolder && file.path.isNotEmpty && storedFileExists(file.path)) {
       return FileThumbnail(
         path: file.path,

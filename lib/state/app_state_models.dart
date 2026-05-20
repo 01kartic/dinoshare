@@ -60,6 +60,7 @@ class HistoryFileItem {
     this.relativePath,
     this.topLevelName,
     this.mimeWarning,
+    this.textContent,
   });
 
   final String name;
@@ -68,6 +69,7 @@ class HistoryFileItem {
   final String? relativePath;
   final String? topLevelName;
   final String? mimeWarning;
+  final String? textContent;
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -76,6 +78,7 @@ class HistoryFileItem {
     'relativePath': relativePath,
     'topLevelName': topLevelName,
     'mimeWarning': mimeWarning,
+    'textContent': textContent,
   };
 
   factory HistoryFileItem.fromJson(Map<String, dynamic> j) => HistoryFileItem(
@@ -85,6 +88,7 @@ class HistoryFileItem {
     relativePath: j['relativePath'] as String?,
     topLevelName: j['topLevelName'] as String?,
     mimeWarning: j['mimeWarning'] as String?,
+    textContent: j['textContent'] as String?,
   );
 
   factory HistoryFileItem.fromCompleted(TransferCompletedItem item) =>
@@ -95,6 +99,7 @@ class HistoryFileItem {
         relativePath: item.relativePath,
         topLevelName: item.topLevelName,
         mimeWarning: item.mimeWarning,
+        textContent: item.textContent,
       );
 }
 

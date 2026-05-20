@@ -47,7 +47,7 @@ Future<void> _pickShareTargets({
   required ShareTargetType type,
 }) async {
   final nextItems = <SelectedShareItem>[
-    if (!reset) ...appShareItems.value.where((item) => !item.isText),
+    if (!reset) ...appShareItems.value,
   ];
 
   if (type == ShareTargetType.folder) {
@@ -205,7 +205,9 @@ Future<bool> addTextShareTarget({
   final value = text.trim();
   if (value.isEmpty) return false;
 
-  final nextItems = <SelectedShareItem>[];
+  final nextItems = <SelectedShareItem>[
+    if (!reset) ...appShareItems.value,
+  ];
   final label = _textShareLabel(value);
   nextItems.add(
     SelectedShareItem(

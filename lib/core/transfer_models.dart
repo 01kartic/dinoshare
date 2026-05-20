@@ -112,6 +112,7 @@ class TransferCompletedItem {
     this.topLevelName,
     this.mimeType,
     this.mimeWarning,
+    this.textContent,
   });
 
   final String name;
@@ -121,6 +122,7 @@ class TransferCompletedItem {
   final String? topLevelName;
   final String? mimeType;
   final String? mimeWarning;
+  final String? textContent;
 }
 
 class TransferItemProgress {

@@ -87,7 +87,7 @@ void showShareTargetPickerSheet(
                               ),
                               _ShareTargetOption(
                                 title: 'Text',
-                                icon: HugeIcons.strokeRoundedTextFont,
+                                icon: HugeIcons.strokeRoundedText,
                                 onPressed:
                                     () => _openTextSheet(
                                       context,

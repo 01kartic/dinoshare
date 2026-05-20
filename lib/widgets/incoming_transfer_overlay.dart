@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class IncomingTransferOverlay extends StatefulWidget {
   const IncomingTransferOverlay({super.key, required this.child});
@@ -113,6 +114,18 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
       sessionId: request.sessionId,
       accept: true,
     );
+  }
+
+  Future<void> _openLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  List<String> _extractUrls(String text) {
+    final regex = RegExp(r'https?://[^\s]+');
+    return regex.allMatches(text).map((m) => m.group(0)!).toList();
   }
 
   void _toggleFavorite() {
@@ -282,6 +295,9 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
     IncomingTransferRequest request,
     String text,
   ) {
+    final urls = _extractUrls(text);
+    final singleUrl = urls.length == 1 ? urls.first : null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
@@ -337,16 +353,17 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
             ),
           ),
           Container(
-            constraints: const BoxConstraints(maxHeight: 230),
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: theme.colors.secondary,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: theme.colors.border),
+              color: theme.colors.muted,
+              borderRadius: BorderRadius.circular(4),
             ),
-            child: SingleChildScrollView(
-              child: DText(text, color: theme.colors.mutedForeground),
+            child: DText(
+              text,
+              color: theme.colors.mutedForeground,
+              maxLines: 15,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           Row(
@@ -369,6 +386,13 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
                   child: const Text('Copy'),
                 ),
               ),
+              if (singleUrl != null)
+                DButton(
+                  size: DButtonSize.sm,
+                  variant: DButtonVariant.outline,
+                  onPressed: () => _openLink(singleUrl),
+                  child: HugeIcon(icon: HugeIcons.strokeRoundedLinkSquare01),
+                ),
             ],
           ),
         ],
@@ -412,8 +436,8 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
   }
 
   String? _requestText(IncomingTransferRequest request) {
-    for (final file in request.files) {
-      if (file.isText && file.textContent != null) return file.textContent;
+    if (request.files.length == 1 && request.files.first.isText) {
+      return request.files.first.textContent;
     }
     return null;
   }

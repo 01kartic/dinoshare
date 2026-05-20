@@ -4,6 +4,7 @@ import 'package:dinoshare/pages/folder_details.dart';
 import 'package:dinoshare/pages/home.dart';
 import 'package:dinoshare/style/typography.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:dinoshare/state/state_index.dart';
@@ -45,6 +46,7 @@ class TransferDone extends StatelessWidget {
     final durationLabel = _formatDuration(duration);
     final isStopped = session.status == TransferStatus.stopped;
     final displayItems = _topLevelItems(session.completedItems);
+    final isTextOnly = session.files.every((f) => f.isText);
 
     return IncomingTransferOverlay(
       child: Container(
@@ -69,64 +71,65 @@ class TransferDone extends StatelessWidget {
               ],
               title: isStopped ? 'Stopped' : 'Completed',
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Column(
-                spacing: 2,
-                children: [
-                  Row(
-                    spacing: 2,
-                    children: [
-                      DItem(
-                        compact: true,
-                        title: Text(fileCountLabel),
-                        prefix: HugeIcon(
-                          icon: HugeIcons.strokeRoundedFiles01,
-                          size: 20,
-                          color: theme.colors.primary,
-                        ),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(14),
-                          bottomLeft: Radius.circular(4),
-                          topRight: Radius.circular(4),
-                          bottomRight: Radius.circular(4),
-                        ),
-                      ),
-                      Expanded(
-                        child: DItem(
-                          title: Text(durationLabel),
+            if (!isTextOnly)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  spacing: 2,
+                  children: [
+                    Row(
+                      spacing: 2,
+                      children: [
+                        DItem(
+                          compact: true,
+                          title: Text(fileCountLabel),
                           prefix: HugeIcon(
-                            icon: HugeIcons.strokeRoundedTimer01,
+                            icon: HugeIcons.strokeRoundedFiles01,
                             size: 20,
                             color: theme.colors.primary,
                           ),
                           borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(4),
+                            topLeft: Radius.circular(14),
                             bottomLeft: Radius.circular(4),
-                            topRight: Radius.circular(14),
+                            topRight: Radius.circular(4),
                             bottomRight: Radius.circular(4),
                           ),
                         ),
+                        Expanded(
+                          child: DItem(
+                            title: Text(durationLabel),
+                            prefix: HugeIcon(
+                              icon: HugeIcons.strokeRoundedTimer01,
+                              size: 20,
+                              color: theme.colors.primary,
+                            ),
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(4),
+                              bottomLeft: Radius.circular(4),
+                              topRight: Radius.circular(14),
+                              bottomRight: Radius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    DItem(
+                      title: Text(receivedSize),
+                      prefix: HugeIcon(
+                        icon: HugeIcons.strokeRoundedDatabase01,
+                        size: 20,
+                        color: theme.colors.primary,
                       ),
-                    ],
-                  ),
-                  DItem(
-                    title: Text(receivedSize),
-                    prefix: HugeIcon(
-                      icon: HugeIcons.strokeRoundedDatabase01,
-                      size: 20,
-                      color: theme.colors.primary,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(4),
+                        bottomLeft: Radius.circular(14),
+                        topRight: Radius.circular(4),
+                        bottomRight: Radius.circular(14),
+                      ),
                     ),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      bottomLeft: Radius.circular(14),
-                      topRight: Radius.circular(4),
-                      bottomRight: Radius.circular(14),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
             if (isStopped)
               Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -204,6 +207,9 @@ class TransferDone extends StatelessWidget {
     DataUnitType unit,
     _CompletedDisplayItem item,
   ) {
+    final isTextItem = session.files.any(
+      (f) => f.isText && (f.topLevelName == item.name || f.name == item.name),
+    );
     final canOpen =
         !item.isFolder &&
         storedFileExists(item.path) &&
@@ -215,16 +221,26 @@ class TransferDone extends StatelessWidget {
 
     return DItem(
       padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
-      prefix: FileThumbnail(
-        path: item.path,
-        name: item.name,
-        isDirectory: item.isFolder,
-        size: 48,
-        borderRadius: 8,
-        iconColor: theme.colors.primary,
-      ),
+      prefix:
+          isTextItem
+              ? Padding(
+                padding: EdgeInsets.all(12),
+                child: HugeIcon(
+                  icon: HugeIcons.strokeRoundedText,
+                  size: 24,
+                  color: theme.colors.primary,
+                ),
+              )
+              : FileThumbnail(
+                path: item.path,
+                name: item.name,
+                isDirectory: item.isFolder,
+                size: 48,
+                borderRadius: 8,
+                iconColor: theme.colors.primary,
+              ),
       title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      description: Text(unit.formatSize(item.sizeBytes)),
+      description: isTextItem ? null : Text(unit.formatSize(item.sizeBytes)),
       suffix:
           item.isFolder
               ? HugeIcon(
@@ -237,6 +253,20 @@ class TransferDone extends StatelessWidget {
                 icon: HugeIcons.strokeRoundedAlert02,
                 size: 18,
                 color: theme.colors.destructive,
+              )
+              : isTextItem
+              ? _TextCopyButton(
+                textContent:
+                    session.files
+                        .firstWhere(
+                          (f) =>
+                              f.isText &&
+                              (f.topLevelName == item.name ||
+                                  f.name == item.name),
+                        )
+                        .textContent ??
+                    '',
+                theme: theme,
               )
               : null,
       onPressed:
@@ -326,6 +356,47 @@ class TransferDone extends StatelessWidget {
     final m = d.inMinutes;
     final s = d.inSeconds % 60;
     return s == 0 ? '${m}m' : '${m}m ${s}s';
+  }
+}
+
+class _TextCopyButton extends StatefulWidget {
+  const _TextCopyButton({required this.textContent, required this.theme});
+
+  final String textContent;
+  final FThemeData theme;
+
+  @override
+  State<_TextCopyButton> createState() => _TextCopyButtonState();
+}
+
+class _TextCopyButtonState extends State<_TextCopyButton> {
+  bool _copied = false;
+
+  void _copy() {
+    Clipboard.setData(ClipboardData(text: widget.textContent));
+    setState(() => _copied = true);
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lCustom = dinoCustomColors(
+      dark: widget.theme.colors.brightness == Brightness.dark,
+    );
+    return DButton(
+      size: DButtonSize.sm,
+      variant: DButtonVariant.ghost,
+      onPressed: _copied ? null : _copy,
+      child: HugeIcon(
+        icon:
+            _copied
+                ? HugeIcons.strokeRoundedTick02
+                : HugeIcons.strokeRoundedCopy01,
+        color: _copied ? lCustom.success : widget.theme.colors.primary,
+      ),
+    );
   }
 }
 

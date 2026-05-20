@@ -183,16 +183,16 @@ class _DButtonState extends State<DButton> {
     final double defaultIconSize;
     switch (widget.size) {
       case DButtonSize.xs:
-        defaultIconSize = 16;
+        defaultIconSize = 14;
         break;
       case DButtonSize.sm:
-        defaultIconSize = 18;
+        defaultIconSize = 16;
         break;
       case DButtonSize.md:
-        defaultIconSize = 20;
+        defaultIconSize = 18;
         break;
       case DButtonSize.lg:
-        defaultIconSize = 22;
+        defaultIconSize = 20;
         break;
     }
     final double iconSize = styleIconSize ?? defaultIconSize;

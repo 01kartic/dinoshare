@@ -146,6 +146,32 @@ extension SenderX on DinoshareTransferService {
       }, _sessionKey!);
       await handshakeSocket.flush();
 
+      final isSingleText =
+          selection.files.length == 1 && selection.files.first.isText;
+
+      if (isSingleText) {
+        await handshakeSocket.close();
+        _activeSockets.remove(handshakeSocket);
+        _currentTransferFiles = selection.files;
+        for (final file in selection.files) {
+          _appendCompleted(
+            TransferCompletedItem(
+              name: file.name,
+              path: '',
+              sizeBytes: file.sizeBytes,
+              relativePath: file.relativePath,
+              topLevelName: file.topLevelName,
+              textContent: file.textContent,
+            ),
+          );
+        }
+        activeSession.value = activeSession.value?.copyWith(
+          bytesTransferred: selection.totalBytes,
+        );
+        _finishSession(status: TransferStatus.completed);
+        return TransferStatus.completed;
+      }
+
       debugPrint('[TransferService] Waiting for accept/reject response');
       final response = await _readEncryptedJson(reader, _sessionKey!);
       final responseType = response['type'];
@@ -176,10 +202,16 @@ extension SenderX on DinoshareTransferService {
       return TransferStatus.failed;
     }
 
-    if (selection.files.every((file) => file.isText)) {
-      _setSessionStatus(TransferStatus.inProgress);
-      _currentTransferFiles = selection.files;
-      for (final file in selection.files) {
+    _setSessionStatus(TransferStatus.inProgress);
+    _currentTransferFiles = selection.files;
+    _topLevelStartBytes = 0;
+    _resetSpeedCounters();
+
+    final textFiles = selection.files.where((f) => f.isText).toList();
+    final fileFiles = selection.files.where((f) => !f.isText).toList();
+
+    if (textFiles.isNotEmpty) {
+      for (final file in textFiles) {
         _appendCompleted(
           TransferCompletedItem(
             name: file.name,
@@ -187,26 +219,20 @@ extension SenderX on DinoshareTransferService {
             sizeBytes: file.sizeBytes,
             relativePath: file.relativePath,
             topLevelName: file.topLevelName,
+            textContent: file.textContent,
           ),
         );
       }
       activeSession.value = activeSession.value?.copyWith(
-        bytesTransferred: selection.totalBytes,
+        bytesTransferred: textFiles.fold<int>(0, (sum, f) => sum + f.sizeBytes),
       );
-      _finishSession(status: TransferStatus.completed);
-      return TransferStatus.completed;
     }
-
-    _setSessionStatus(TransferStatus.inProgress);
-    _currentTransferFiles = selection.files;
-    _topLevelStartBytes = 0;
-    _resetSpeedCounters();
 
     try {
       await _sendFilesInParallel(
         peer: peer,
         sessionId: sessionId,
-        files: selection.files,
+        files: fileFiles,
       );
       _finishSession(status: TransferStatus.completed);
       await _notifyComplete(activeSession.value);

@@ -27,6 +27,7 @@ Future<void> _loadTransferHistory() async {
 Future<void> addTransferToHistory(TransferSession session) async {
   if (session.status != TransferStatus.completed) return;
   if (session.completedItems.isEmpty) return;
+  if (session.files.length == 1 && session.files.first.isText) return;
 
   final item = TransferHistoryItem.fromSession(session);
   final current = List<TransferHistoryItem>.from(appTransferHistory.value);

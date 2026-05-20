@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:dinoshare/pages/folder_details.dart';
 import 'package:dinoshare/pages/home.dart';
+import 'package:dinoshare/style/theme.dart';
 import 'package:dinoshare/style/typography.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:hugeicons/hugeicons.dart';
 import 'package:dinoshare/pages/transfer_done.dart';
@@ -27,12 +29,16 @@ class Transfer extends StatefulWidget {
 
 class _TransferState extends State<Transfer> {
   bool _navigated = false;
+  String? _copiedItemName;
 
   @override
   void initState() {
     super.initState();
     transferService.activeSession.addListener(_onSessionChanged);
     appDataUnit.addListener(_onUnitChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onSessionChanged();
+    });
   }
 
   @override
@@ -219,6 +225,13 @@ class _TransferState extends State<Transfer> {
     final isCompleted = item.isCompleted;
     final isInProgress = !isCompleted && item.bytesTransferred > 0;
     final isPending = !isCompleted && !isInProgress;
+    final isTextItem = session.files.any(
+      (f) => f.isText && (f.topLevelName == item.name || f.name == item.name),
+    );
+
+    final lCustom = dinoCustomColors(
+      dark: theme.colors.brightness == Brightness.dark,
+    );
 
     // Find the completed item path for clickable items
     TransferCompletedItem? completedItem;
@@ -263,17 +276,30 @@ class _TransferState extends State<Transfer> {
     return DItem(
       disabled: isPending,
       padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
-      prefix: FileThumbnail(
-        path: previewPath,
-        name: previewName,
-        isDirectory: isFolder || _isDirectoryPath(previewPath),
-        size: 48,
-        borderRadius: 6,
-        showThumbnail: canShowPreview,
-        iconColor: theme.colors.primary,
-      ),
+      prefix:
+          isTextItem
+              ? Padding(
+                padding: EdgeInsets.all(12),
+                child: HugeIcon(
+                  icon: HugeIcons.strokeRoundedText,
+                  size: 24,
+                  color: theme.colors.primary,
+                ),
+              )
+              : FileThumbnail(
+                  path: previewPath,
+                  name: previewName,
+                  isDirectory: isFolder || _isDirectoryPath(previewPath),
+                  size: 48,
+                  borderRadius: 6,
+                    showThumbnail: canShowPreview,
+                    iconColor: theme.colors.primary,
+                  ),
       title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      description: Text(appDataUnit.value.formatSize(item.sizeBytes)),
+      description:
+          isTextItem
+              ? null
+              : Text(appDataUnit.value.formatSize(item.sizeBytes)),
       suffix:
           isInProgress
               ? Padding(
@@ -285,6 +311,48 @@ class _TransferState extends State<Transfer> {
                 icon: HugeIcons.strokeRoundedArrowRight01,
                 size: 16,
                 color: theme.colors.mutedForeground,
+              )
+              : isTextItem
+              ? DButton(
+                size: DButtonSize.sm,
+                variant: DButtonVariant.ghost,
+                onPressed: () {
+                  final itemName = item.name;
+                  final text =
+                      session.files
+                          .firstWhere(
+                            (f) =>
+                                f.isText &&
+                                (f.topLevelName == itemName ||
+                                    f.name == itemName),
+                          )
+                          .textContent ??
+                      '';
+                  Clipboard.setData(ClipboardData(text: text));
+                  setState(() => _copiedItemName = itemName);
+                  Future.delayed(
+                    const Duration(milliseconds: 2500),
+                    () {
+                      if (mounted) {
+                        setState(
+                          () =>
+                              _copiedItemName == itemName
+                                  ? _copiedItemName = null
+                                  : null,
+                        );
+                      }
+                    },
+                  );
+                },
+                child: HugeIcon(
+                  icon:
+                      _copiedItemName == item.name
+                          ? HugeIcons.strokeRoundedTick02
+                          : HugeIcons.strokeRoundedCopy01,
+                  color: _copiedItemName == item.name
+                          ? lCustom.success
+                          : theme.colors.primary,
+                ),
               )
               : null,
       onPressed:

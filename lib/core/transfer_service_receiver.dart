@@ -129,6 +129,42 @@ extension ReceiverX on DinoshareTransferService {
     _startSpeedTimer();
     _resetSpeedCounters();
 
+    final textFiles = pending.request.files.where((f) => f.isText).toList();
+    if (textFiles.isNotEmpty) {
+      for (final file in textFiles) {
+        _appendCompleted(
+          TransferCompletedItem(
+            name: file.name,
+            path: '',
+            sizeBytes: file.sizeBytes,
+            relativePath: file.relativePath,
+            topLevelName: file.topLevelName,
+            textContent: file.textContent,
+          ),
+        );
+      }
+      final textBytes = textFiles.fold<int>(0, (sum, f) => sum + f.sizeBytes);
+      activeSession.value = activeSession.value?.copyWith(
+        bytesTransferred: textBytes,
+      );
+    }
+
+    // All items are text (2+ items) — finish immediately since nothing to receive
+    final allText = pending.request.files.every((f) => f.isText);
+    if (allText && textFiles.length > 1) {
+      try {
+        await _writeEncryptedJson(pending.socket, {
+          'type': 'accept',
+          'sessionId': sessionId,
+        }, _sessionKey!);
+        await pending.socket.flush();
+      } catch (_) {}
+      await pending.socket.close();
+      _finishSession(status: TransferStatus.completed);
+      incomingRequest.value = null;
+      return true;
+    }
+
     try {
       await _writeEncryptedJson(pending.socket, {
         'type': 'accept',

@@ -105,7 +105,7 @@ class _ShareState extends State<Share> {
                                                 icon:
                                                     item.isText
                                                         ? HugeIcons
-                                                            .strokeRoundedTextFont
+                                                            .strokeRoundedText
                                                         : item.isDirectory
                                                         ? HugeIcons
                                                             .strokeRoundedFolder01
@@ -237,6 +237,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
   String? _pendingPeerId;
   bool _navigated = false;
   String? _errorMessage;
+  String? _sentPeerId;
 
   @override
   void initState() {
@@ -272,9 +273,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
         if (!mounted) return;
         Navigator.of(context).pop();
         Navigator.of(widget.parentContext).pushReplacement(
-          CupertinoPageRoute(
-            builder: (_) => Transfer(role: TransferRole.sending),
-          ),
+          CupertinoPageRoute(builder: (_) => Transfer(role: TransferRole.sending)),
         );
       });
     } else if (session.status == TransferStatus.rejected ||
@@ -298,11 +297,25 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
       _errorMessage = null;
     });
     final selection = currentSelection();
-    await transferService.sendTransferRequest(
+    final status = await transferService.sendTransferRequest(
       peer: peer,
       selection: selection,
       senderName: appDeviceName.value,
     );
+    if (status == TransferStatus.completed &&
+        selection.files.length == 1 &&
+        selection.files.first.isText &&
+        mounted) {
+      setState(() {
+        _pendingPeerId = null;
+        _sentPeerId = peer.id;
+      });
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) {
+          setState(() => _sentPeerId = null);
+        }
+      });
+    }
   }
 
   @override
@@ -399,9 +412,11 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
                                       peers.map((peer) {
                                         final isLoading =
                                             _pendingPeerId == peer.id;
+                                        final isSent = _sentPeerId == peer.id;
                                         final isDisabled =
-                                            _pendingPeerId != null &&
-                                            _pendingPeerId != peer.id;
+                                            (_pendingPeerId != null &&
+                                                _pendingPeerId != peer.id) ||
+                                            isSent;
                                         return DItem(
                                           disabled: isDisabled,
                                           padding: EdgeInsets.symmetric(
@@ -420,7 +435,16 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
                                             color: theme.colors.primary,
                                           ),
                                           suffix:
-                                              isLoading
+                                              isSent
+                                                  ? HugeIcon(
+                                                    icon:
+                                                        HugeIcons
+                                                            .strokeRoundedTick02,
+                                                    size: 20,
+                                                    color:
+                                                        theme.colors.primary,
+                                                  )
+                                                  : isLoading
                                                   ? FCircularProgress.loader(
                                                     size:
                                                         FCircularProgressSizeVariant

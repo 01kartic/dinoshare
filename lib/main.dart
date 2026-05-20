@@ -9,6 +9,7 @@ import 'pages/home.dart';
 import 'pages/onboarding.dart';
 import 'state/state_index.dart';
 import 'style/theme.dart';
+import 'widgets/incoming_transfer_overlay.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -119,6 +120,9 @@ class _DinoshareAppState extends State<DinoshareApp>
               ],
               supportedLocales: FLocalizations.supportedLocales,
               home: appOnboardingDone ? const Home() : const Onboarding(),
+              builder: (context, child) => IncomingTransferOverlay(
+                child: child!,
+              ),
             ),
           );
         },
