@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 import 'package:dinoshare/style/svgs.dart';
 import 'package:dinoshare/style/typography.dart';
 import 'package:dinoshare/util/utility_function.dart';
@@ -91,84 +92,100 @@ class _SettingsState extends State<Settings> {
         return DraggableScrollableSheet(
           expand: false,
           initialChildSize: 0.4,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
+          minChildSize: 0.3,
+          maxChildSize: 0.95,
           builder:
-              (ctx2, controller) => Container(
-                decoration: BoxDecoration(
-                  color: theme.colors.secondary,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
-                  ),
-                  border: Border.all(
-                    color: theme.colors.border,
-                    strokeAlign: BorderSide.strokeAlignOutside,
-                  ),
+              (ctx2, controller) => ScrollConfiguration(
+                behavior: ScrollConfiguration.of(ctx).copyWith(
+                  dragDevices: {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse,
+                    PointerDeviceKind.trackpad,
+                  },
                 ),
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  spacing: 12,
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: theme.colors.border,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.colors.secondary,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
                     ),
-                    Expanded(
-                      child: ListView(
-                        controller: controller,
-                        children: [
-                          Padding(
-                            padding: EdgeInsetsGeometry.fromLTRB(8, 4, 8, 8),
-                            child: DText(
-                              'Select Type',
-                              weight: FontWeight.w500,
-                              color: theme.colors.mutedForeground,
+                    border: Border.all(
+                      color: theme.colors.border,
+                      strokeAlign: BorderSide.strokeAlignOutside,
+                    ),
+                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    spacing: 12,
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: theme.colors.border,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          controller: controller,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              spacing: 8,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsetsGeometry.fromLTRB(8, 4, 8, 8),
+                                  child: DText(
+                                    'Select Type',
+                                    weight: FontWeight.w500,
+                                    color: theme.colors.mutedForeground,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 20),
+                                  child: DItemList(
+                                    borderRadius: BorderRadius.circular(14),
+                                    children:
+                                        _unitOptions.map((unit) {
+                                          return ValueListenableBuilder<DataUnitType>(
+                                            valueListenable: appDataUnit,
+                                            builder:
+                                                (_, current, _) => DItem(
+                                                  title: Text(unit.label),
+                                                  prefix:
+                                                      current == unit
+                                                          ? HugeIcon(
+                                                            icon:
+                                                                HugeIcons
+                                                                    .strokeRoundedTick02,
+                                                            size: 22,
+                                                            color: lCustom.success,
+                                                            strokeWidth: 2,
+                                                          )
+                                                          : SizedBox(
+                                                            width: 22,
+                                                            height: 22,
+                                                          ),
+                                                  onPressed: () async {
+                                                    await setDataUnit(unit);
+                                                    if (ctx2.mounted) {
+                                                      Navigator.of(ctx2).pop();
+                                                    }
+                                                  },
+                                                ),
+                                          );
+                                        }).toList(),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 20),
-                            child: DItemList(
-                              borderRadius: BorderRadius.circular(14),
-                              children:
-                                  _unitOptions.map((unit) {
-                                    return ValueListenableBuilder<DataUnitType>(
-                                      valueListenable: appDataUnit,
-                                      builder:
-                                          (_, current, _) => DItem(
-                                            title: Text(unit.label),
-                                            prefix:
-                                                current == unit
-                                                    ? HugeIcon(
-                                                      icon:
-                                                          HugeIcons
-                                                              .strokeRoundedTick02,
-                                                      size: 22,
-                                                      color: lCustom.success,
-                                                      strokeWidth: 2,
-                                                    )
-                                                    : SizedBox(
-                                                      width: 22,
-                                                      height: 22,
-                                                    ),
-                                            onPressed: () async {
-                                              await setDataUnit(unit);
-                                              if (ctx2.mounted) {
-                                                Navigator.of(ctx2).pop();
-                                              }
-                                            },
-                                          ),
-                                    );
-                                  }).toList(),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
         );

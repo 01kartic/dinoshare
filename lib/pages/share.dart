@@ -321,7 +321,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
       expand: false,
       initialChildSize: 0.5,
       minChildSize: 0.3,
-      maxChildSize: 0.9,
+      maxChildSize: 0.95,
       builder:
           (ctx, controller) => ScrollConfiguration(
             behavior: ScrollConfiguration.of(ctx).copyWith(

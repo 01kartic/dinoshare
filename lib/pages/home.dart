@@ -244,7 +244,7 @@ class _HomeState extends State<Home> {
                     Padding(
                       padding: const EdgeInsetsDirectional.fromSTEB(
                         24,
-                        40,
+                        36,
                         24,
                         20,
                       ),

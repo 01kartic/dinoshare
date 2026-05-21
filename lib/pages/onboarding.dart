@@ -95,7 +95,7 @@ class _OnboardingState extends State<Onboarding> {
                   children: [
                     Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       clipBehavior: Clip.hardEdge,
                       child: Image(
