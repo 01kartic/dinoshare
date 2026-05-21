@@ -36,6 +36,7 @@ class MainActivity : FlutterActivity() {
                     "readUriBytes" -> readUriBytes(call.argument<String>("uri"), result)
                     "openUri" -> openUri(call.argument<String>("uri"), result)
                     "closeAll" -> { closeAll(); result.success(null) }
+                    "uriExists" -> uriExists(call.argument<String>("uri"), result)
                     else -> result.notImplemented()
                 }
             }
@@ -245,6 +246,21 @@ class MainActivity : FlutterActivity() {
             } ?: result.success(null)
         } catch (e: Exception) {
             result.error("read_failed", e.message, null)
+        }
+    }
+
+    private fun uriExists(uriString: String?, result: MethodChannel.Result) {
+        if (uriString.isNullOrBlank()) {
+            result.success(false)
+            return
+        }
+        try {
+            val uri = Uri.parse(uriString)
+            contentResolver.openFileDescriptor(uri, "r")?.use {
+                result.success(true)
+            } ?: result.success(false)
+        } catch (e: Exception) {
+            result.success(false)
         }
     }
 

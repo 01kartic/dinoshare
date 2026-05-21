@@ -71,6 +71,14 @@ class TransferHistoryGroupView extends StatelessWidget {
     );
   }
 
+  Future<bool> _anyChildExists(Iterable<HistoryFileItem> children) {
+    final paths =
+        children.map((c) => c.path).where((p) => p.isNotEmpty).toList();
+    if (paths.isEmpty) return Future<bool>.value(false);
+    return Future.wait(paths.map(storedFileExistsAsync))
+        .then((results) => results.any((v) => v));
+  }
+
   Widget _buildFileItem(
     BuildContext context,
     FThemeData theme,
@@ -78,65 +86,74 @@ class TransferHistoryGroupView extends StatelessWidget {
   ) {
     final isTextItem = file.path.isEmpty && !file.isFolder;
     final textContent = isTextItem ? file.children.first.textContent : null;
-    final fileExists = file.path.isNotEmpty && storedFileExists(file.path);
     final directionLabel =
         item.isSending ? 'To ${item.peerName}' : 'From ${item.peerName}';
 
-    final bool anyFileExists;
+    final Future<bool> existenceFuture;
     if (file.isFolder) {
-      anyFileExists =
-          file.children.any((c) => c.path.isNotEmpty && storedFileExists(c.path));
+      existenceFuture = _anyChildExists(file.children);
+    } else if (file.path.isNotEmpty) {
+      existenceFuture = storedFileExistsAsync(file.path);
     } else {
-      anyFileExists = fileExists;
+      existenceFuture = Future<bool>.value(false);
     }
-    final isDisabled = !isTextItem && !anyFileExists;
 
-    return DItem(
-      disabled: isDisabled,
-      padding: isTextItem ? null : EdgeInsets.fromLTRB(8, 8, 16, 8),
-      spacing: 12,
-      prefix: isTextItem ? Padding(
-        padding: EdgeInsets.fromLTRB(7, 0, 15, 0),
-        child: HugeIcon(
-          icon: HugeIcons.strokeRoundedText,
-          size: 20,
-          color: theme.colors.primary,
-        ),
-      ) : _buildFilePreview(theme, file),
-      title: DText(
-        file.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        weight: FontWeight.w500,
-      ),
-      description:
-          file.path.isEmpty && !file.isFolder
-              ? null
-              : DText(
-                  file.isFolder
-                      ? directionLabel
-                      : appDataUnit.value.formatSize(file.sizeBytes),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  color: theme.colors.mutedForeground,
-                  weight: FontWeight.w400,
-                ),
-      suffix:
-          file.isFolder
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedArrowRight01,
-                size: 16,
-                color: theme.colors.mutedForeground,
-              )
-              : null,
-      onPressed:
-          file.isFolder
-              ? () => _openFolder(context, file, directionLabel)
-              : isTextItem && textContent != null
-              ? () => Clipboard.setData(ClipboardData(text: textContent))
-              : fileExists
-              ? () => openStoredFile(file.path)
-              : null,
+    return FutureBuilder<bool>(
+      future: existenceFuture,
+      initialData: true,
+      builder: (context, snapshot) {
+        final anyFileExists = snapshot.data ?? true;
+        final isDisabled = !isTextItem && !anyFileExists;
+        final fileExists = !file.isFolder && anyFileExists;
+
+        return DItem(
+          disabled: isDisabled,
+          padding: isTextItem ? null : EdgeInsets.fromLTRB(8, 8, 16, 8),
+          spacing: 12,
+          prefix: isTextItem ? Padding(
+            padding: EdgeInsets.fromLTRB(7, 0, 15, 0),
+            child: HugeIcon(
+              icon: HugeIcons.strokeRoundedText,
+              size: 20,
+              color: theme.colors.primary,
+            ),
+          ) : _buildFilePreview(theme, file),
+          title: DText(
+            file.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            weight: FontWeight.w500,
+          ),
+          description:
+              file.path.isEmpty && !file.isFolder
+                  ? null
+                  : DText(
+                      file.isFolder
+                          ? directionLabel
+                          : appDataUnit.value.formatSize(file.sizeBytes),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      color: theme.colors.mutedForeground,
+                      weight: FontWeight.w400,
+                    ),
+          suffix:
+              file.isFolder
+                  ? HugeIcon(
+                    icon: HugeIcons.strokeRoundedArrowRight01,
+                    size: 16,
+                    color: theme.colors.mutedForeground,
+                  )
+                  : null,
+          onPressed:
+              file.isFolder
+                  ? () => _openFolder(context, file, directionLabel)
+                  : isTextItem && textContent != null
+                  ? () => Clipboard.setData(ClipboardData(text: textContent))
+                  : fileExists
+                  ? () => openStoredFile(file.path)
+                  : null,
+        );
+      },
     );
   }
 

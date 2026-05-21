@@ -174,59 +174,74 @@ class _FolderDetailsState extends State<FolderDetails> {
     );
   }
 
+  Future<bool> _anyChildExists(String folderName) {
+    final paths =
+        widget.items
+            .where((i) => _isInside(folderName, i))
+            .map((i) => i.path)
+            .where((p) => p.isNotEmpty)
+            .toList();
+    if (paths.isEmpty) return Future<bool>.value(false);
+    return Future.wait(paths.map(storedFileExistsAsync))
+        .then((results) => results.any((v) => v));
+  }
+
   Widget _buildItem(BuildContext context, _FolderDisplayItem item) {
     final theme = context.theme;
-    final fileExists =
-        !item.isFolder && item.path.isNotEmpty && storedFileExists(item.path);
 
-    final bool anyFileExists;
+    final Future<bool> existenceFuture;
     if (item.isFolder) {
-      anyFileExists =
-          widget.items.any(
-            (i) =>
-                _isInside(item.name, i) &&
-                i.path.isNotEmpty &&
-                storedFileExists(i.path),
-          );
+      existenceFuture = _anyChildExists(item.name);
+    } else if (item.path.isNotEmpty) {
+      existenceFuture = storedFileExistsAsync(item.path);
     } else {
-      anyFileExists = fileExists;
+      existenceFuture = Future<bool>.value(false);
     }
-    final isDisabled = !anyFileExists;
-    final canOpen = fileExists && !isDangerousFileName(item.name);
 
-    return DItem(
-      disabled: isDisabled,
-      padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
-      prefix: FileThumbnail(
-        path: item.path,
-        name: item.name,
-        isDirectory: item.isFolder,
-        size: 48,
-        borderRadius: 6,
-        iconColor: theme.colors.primary,
-      ),
-      title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      description: Text(appDataUnit.value.formatSize(item.sizeBytes)),
-      suffix:
-          item.isFolder
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedArrowRight01,
-                size: 16,
-                color: theme.colors.mutedForeground,
-              )
-              : item.mimeWarning != null
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedAlert02,
-                size: 18,
-                color: theme.colors.destructive,
-              )
-              : null,
-      onPressed:
-          item.isFolder
-              ? () => _openFolder(item.name)
-              : canOpen
-              ? () => openStoredFile(item.path)
-              : null,
+    return FutureBuilder<bool>(
+      future: existenceFuture,
+      initialData: true,
+      builder: (context, snapshot) {
+        final anyFileExists = snapshot.data ?? true;
+        final fileExists = !item.isFolder && anyFileExists;
+        final isDisabled = !anyFileExists;
+        final canOpen = fileExists && !isDangerousFileName(item.name);
+
+        return DItem(
+          disabled: isDisabled,
+          padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
+          prefix: FileThumbnail(
+            path: item.path,
+            name: item.name,
+            isDirectory: item.isFolder,
+            size: 48,
+            borderRadius: 6,
+            iconColor: theme.colors.primary,
+          ),
+          title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          description: Text(appDataUnit.value.formatSize(item.sizeBytes)),
+          suffix:
+              item.isFolder
+                  ? HugeIcon(
+                    icon: HugeIcons.strokeRoundedArrowRight01,
+                    size: 16,
+                    color: theme.colors.mutedForeground,
+                  )
+                  : item.mimeWarning != null
+                  ? HugeIcon(
+                    icon: HugeIcons.strokeRoundedAlert02,
+                    size: 18,
+                    color: theme.colors.destructive,
+                  )
+                  : null,
+          onPressed:
+              item.isFolder
+                  ? () => _openFolder(item.name)
+                  : canOpen
+                  ? () => openStoredFile(item.path)
+                  : null,
+        );
+      },
     );
   }
 

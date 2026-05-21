@@ -17,6 +17,29 @@ bool storedFileExists(String path) {
   }
 }
 
+final Map<String, Future<bool>> _existenceCache = {};
+
+Future<bool> storedFileExistsAsync(String path) {
+  if (path.isEmpty) return Future<bool>.value(false);
+  if (_existenceCache.containsKey(path)) return _existenceCache[path]!;
+
+  late final Future<bool> future;
+  if (isContentUri(path)) {
+    future = _pickerChannel
+        .invokeMethod<bool>('uriExists', {'uri': path})
+        .then((v) => v == true)
+        .catchError((_) => false);
+  } else {
+    try {
+      future = Future<bool>.value(File(path).existsSync());
+    } catch (_) {
+      future = Future<bool>.value(false);
+    }
+  }
+  _existenceCache[path] = future;
+  return future;
+}
+
 Future<Uint8List?> readStoredFileBytes(String path) async {
   if (path.isEmpty) return null;
   if (isContentUri(path)) {

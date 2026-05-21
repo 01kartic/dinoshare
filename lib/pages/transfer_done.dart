@@ -201,6 +201,14 @@ class TransferDone extends StatelessWidget {
     );
   }
 
+  Future<bool> _anyChildExists(Iterable<TransferCompletedItem> children) {
+    final paths =
+        children.map((c) => c.path).where((p) => p.isNotEmpty).toList();
+    if (paths.isEmpty) return Future<bool>.value(false);
+    return Future.wait(paths.map(storedFileExistsAsync))
+        .then((results) => results.any((v) => v));
+  }
+
   Widget _buildFileItem(
     BuildContext context,
     FThemeData theme,
@@ -210,80 +218,88 @@ class TransferDone extends StatelessWidget {
     final isTextItem = session.files.any(
       (f) => f.isText && (f.topLevelName == item.name || f.name == item.name),
     );
-    final fileExists =
-        !item.isFolder && item.path.isNotEmpty && storedFileExists(item.path);
-    final bool anyFileExists;
-    if (item.isFolder) {
-      anyFileExists =
-          item.children
-              .any((c) => c.path.isNotEmpty && storedFileExists(c.path));
-    } else {
-      anyFileExists = fileExists;
-    }
-    final isDisabled = !isTextItem && !anyFileExists;
-    final canOpen = fileExists && !isDangerousFileName(item.name);
     final directionLabel =
         session.role == TransferRole.sending
             ? 'To ${session.peerName}'
             : 'From ${session.peerName}';
 
-    return DItem(
-      disabled: isDisabled,
-      padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
-      prefix:
-          isTextItem
-              ? Padding(
-                padding: EdgeInsets.all(12),
-                child: HugeIcon(
-                  icon: HugeIcons.strokeRoundedText,
-                  size: 24,
-                  color: theme.colors.primary,
-                ),
-              )
-              : FileThumbnail(
-                path: item.path,
-                name: item.name,
-                isDirectory: item.isFolder,
-                size: 48,
-                borderRadius: 8,
-                iconColor: theme.colors.primary,
-              ),
-      title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      description: isTextItem ? null : Text(unit.formatSize(item.sizeBytes)),
-      suffix:
-          item.isFolder
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedArrowRight01,
-                size: 16,
-                color: theme.colors.mutedForeground,
-              )
-              : item.mimeWarning != null
-              ? HugeIcon(
-                icon: HugeIcons.strokeRoundedAlert02,
-                size: 18,
-                color: theme.colors.destructive,
-              )
-              : isTextItem
-              ? _TextCopyButton(
-                textContent:
-                    session.files
-                        .firstWhere(
-                          (f) =>
-                              f.isText &&
-                              (f.topLevelName == item.name ||
-                                  f.name == item.name),
-                        )
-                        .textContent ??
-                    '',
-                theme: theme,
-              )
-              : null,
-      onPressed:
-          item.isFolder
-              ? () => _openFolder(context, item, directionLabel)
-              : canOpen
-              ? () => openStoredFile(item.path)
-              : null,
+    final Future<bool> existenceFuture;
+    if (item.isFolder) {
+      existenceFuture = _anyChildExists(item.children);
+    } else if (item.path.isNotEmpty) {
+      existenceFuture = storedFileExistsAsync(item.path);
+    } else {
+      existenceFuture = Future<bool>.value(false);
+    }
+
+    return FutureBuilder<bool>(
+      future: existenceFuture,
+      initialData: true,
+      builder: (context, snapshot) {
+        final anyFileExists = snapshot.data ?? true;
+        final fileExists = !item.isFolder && anyFileExists;
+        final isDisabled = !isTextItem && !anyFileExists;
+        final canOpen = fileExists && !isDangerousFileName(item.name);
+
+        return DItem(
+          disabled: isDisabled,
+          padding: EdgeInsets.fromLTRB(8, 8, 16, 8),
+          prefix:
+              isTextItem
+                  ? Padding(
+                    padding: EdgeInsets.all(12),
+                    child: HugeIcon(
+                      icon: HugeIcons.strokeRoundedText,
+                      size: 24,
+                      color: theme.colors.primary,
+                    ),
+                  )
+                  : FileThumbnail(
+                    path: item.path,
+                    name: item.name,
+                    isDirectory: item.isFolder,
+                    size: 48,
+                    borderRadius: 8,
+                    iconColor: theme.colors.primary,
+                  ),
+          title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          description: isTextItem ? null : Text(unit.formatSize(item.sizeBytes)),
+          suffix:
+              item.isFolder
+                  ? HugeIcon(
+                    icon: HugeIcons.strokeRoundedArrowRight01,
+                    size: 16,
+                    color: theme.colors.mutedForeground,
+                  )
+                  : item.mimeWarning != null
+                  ? HugeIcon(
+                    icon: HugeIcons.strokeRoundedAlert02,
+                    size: 18,
+                    color: theme.colors.destructive,
+                  )
+                  : isTextItem
+                  ? _TextCopyButton(
+                    textContent:
+                        session.files
+                            .firstWhere(
+                              (f) =>
+                                  f.isText &&
+                                  (f.topLevelName == item.name ||
+                                      f.name == item.name),
+                            )
+                            .textContent ??
+                        '',
+                    theme: theme,
+                  )
+                  : null,
+          onPressed:
+              item.isFolder
+                  ? () => _openFolder(context, item, directionLabel)
+                  : canOpen
+                  ? () => openStoredFile(item.path)
+                  : null,
+        );
+      },
     );
   }
 
