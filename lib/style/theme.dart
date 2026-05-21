@@ -51,7 +51,7 @@ class DinoColors {
   static const cardForeground = Color(0xFF0A0A0A);
   static const primary = Color(0xFF1447E6);
   static const primaryForeground = Color(0xFFEFF6FF);
-  static const secondary = Color(0xFFF5F5F5);
+  static const secondary = Color(0xFFF0F0F0);
   static const secondaryForeground = Color(0xFF171717);
   static const muted = Color(0xFFF5F5F5);
   static const mutedForeground = Color(0xFF737373);
