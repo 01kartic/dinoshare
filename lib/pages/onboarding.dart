@@ -86,82 +86,90 @@ class _OnboardingState extends State<Onboarding> {
         children: [
           Expanded(
             child: Column(
+              spacing: 16,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
-              spacing: 40,
               children: [
-                Column(
-                  spacing: 16,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      child: Image(
-                        image: AssetImage(platformAsset('app_icon.png')),
-                        width: 64,
-                        height: 64,
-                      ),
-                    ),
-                    Text(
-                      'DinoShare',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colors.foreground,
-                        height: 1.2,
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  child: Image(
+                    image: AssetImage(
+                      platformAsset(
+                        Platform.isAndroid
+                            ? 'icon_foreground.png'
+                            : 'app_icon.png',
                       ),
                     ),
-                  ],
+                    width: 96,
+                    height: 96,
+                  ),
                 ),
                 Text(
-                  _allGranted
-                      ? 'All set to go.'
-                      : 'Provide some permission\nto run this app smoothly.',
-                  textAlign: TextAlign.center,
+                  'DinoShare',
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
-                    color: theme.colors.mutedForeground,
-                    height: 1.5,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colors.foreground,
+                    height: 1.2,
                   ),
                 ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Column(
-              spacing: 12,
-              children: [
-                if (!_allGranted)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DButton(
-                          variant: DButtonVariant.primary,
-                          disabled: _requesting,
-                          onPressed: _requestPermissions,
-                          child: const Text('Enable Permissions'),
-                        ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            spacing: 40,
+            children: [
+              Text(
+                _allGranted
+                    ? 'All set to go.'
+                    : 'Provide some permission\nto run this app smoothly.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w400,
+                  color: theme.colors.mutedForeground,
+                  height: 1.5,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
+                child: Column(
+                  spacing: 12,
+                  children: [
+                    if (!_allGranted)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DButton(
+                              variant: DButtonVariant.primary,
+                              disabled: _requesting,
+                              onPressed: _requestPermissions,
+                              child: const Text('Enable Permissions'),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                if (_showLetsGo)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DButton(
-                          variant: DButtonVariant.success,
-                          onPressed: _completeOnboarding,
-                          child: const Text("Let's go"),
-                        ),
+                    if (_showLetsGo)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DButton(
+                              variant: DButtonVariant.success,
+                              onPressed: _completeOnboarding,
+                              child: const Text("Let's go"),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
