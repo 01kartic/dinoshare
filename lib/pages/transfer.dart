@@ -65,7 +65,10 @@ class _TransferState extends State<Transfer> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
-          CupertinoPageRoute(builder: (_) => TransferDone(session: session)),
+          CupertinoPageRoute(
+            settings: const RouteSettings(name: 'transfer_done'),
+            builder: (_) => TransferDone(session: session),
+          ),
         );
       });
     }

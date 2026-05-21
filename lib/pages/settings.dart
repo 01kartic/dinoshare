@@ -43,7 +43,7 @@ class _SettingsState extends State<Settings> {
   }
 
   Future<void> _pickReceiveFolder() async {
-    final path = await FilePicker.platform.getDirectoryPath(
+    final path = await FilePicker.getDirectoryPath(
       dialogTitle: 'Choose receive folder',
     );
     if (path != null && path.trim().isNotEmpty) {

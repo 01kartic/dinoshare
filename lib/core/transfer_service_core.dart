@@ -104,7 +104,7 @@ class DinoshareTransferService {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinInit = DarwinInitializationSettings();
     await _notifications.initialize(
-      const InitializationSettings(
+      settings: const InitializationSettings(
         android: androidInit,
         iOS: darwinInit,
         macOS: darwinInit,
@@ -544,10 +544,10 @@ class DinoshareTransferService {
     const darwin = DarwinNotificationDetails();
     try {
       await _notifications.show(
-        DateTime.now().millisecondsSinceEpoch % 2147483647,
-        title,
-        body,
-        const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
+        id: DateTime.now().millisecondsSinceEpoch % 2147483647,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
       );
     } catch (_) {}
   }
@@ -567,10 +567,10 @@ class DinoshareTransferService {
     const darwin = DarwinNotificationDetails();
     try {
       await _notifications.show(
-        DateTime.now().millisecondsSinceEpoch % 2147483647,
-        title,
-        body,
-        const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
+        id: DateTime.now().millisecondsSinceEpoch % 2147483647,
+        title: title,
+        body: body,
+        notificationDetails: const NotificationDetails(android: android, iOS: darwin, macOS: darwin),
       );
     } catch (_) {}
   }

@@ -54,6 +54,7 @@ class _ReceiveState extends State<Receive> with WidgetsBindingObserver {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         CupertinoPageRoute(
+          settings: const RouteSettings(name: 'transfer'),
           builder: (_) => Transfer(role: TransferRole.receiving),
         ),
       );

@@ -32,7 +32,7 @@ Future<T?> _pickerCall<T>(Future<T?> Function() call) async {
   } on PlatformException catch (e) {
     if (e.code != 'already_active') rethrow;
     try {
-      await FilePicker.platform.clearTemporaryFiles();
+      await FilePicker.clearTemporaryFiles();
     } catch (_) {}
     try {
       return await call();
@@ -112,7 +112,7 @@ Future<void> _pickShareTargets({
 
     // ── Other platforms (macOS etc.): file_picker folder picker ────────────
     final dirPath = await _pickerCall(
-      () => FilePicker.platform.getDirectoryPath(
+      () => FilePicker.getDirectoryPath(
         dialogTitle: 'Pick folder to share',
       ),
     );
@@ -126,7 +126,7 @@ Future<void> _pickShareTargets({
   if (Platform.isMacOS) {
     // ── macOS: file picker ──────────────────────────────────────────────────
     final result = await _pickerCall(
-      () => FilePicker.platform.pickFiles(
+      () => FilePicker.pickFiles(
         allowMultiple: true,
         type: FileType.any,
         withReadStream: false,
@@ -221,7 +221,7 @@ Future<void> _pickShareTargets({
   } else {
     // ── iOS / Windows: file picker ───────────────────────────────────────────
     final result = await _pickerCall(
-      () => FilePicker.platform.pickFiles(
+      () => FilePicker.pickFiles(
         allowMultiple: true,
         type: FileType.any,
         withData: false,
@@ -320,6 +320,41 @@ Future<void> _addDirectory(
 
 void removeShareTarget(String id) {
   appShareItems.value = appShareItems.value.where((i) => i.id != id).toList();
+}
+
+Future<void> addDropTargets(List<String> paths) async {
+  final nextItems = <SelectedShareItem>[...appShareItems.value];
+  for (final rawPath in paths) {
+    final norm = p.normalize(rawPath);
+    if (nextItems.any((i) => p.normalize(i.path) == norm)) continue;
+    final entityType = FileSystemEntity.typeSync(norm);
+    if (entityType == FileSystemEntityType.directory) {
+      await _addDirectory(norm, nextItems);
+    } else if (entityType == FileSystemEntityType.file) {
+      final file = File(norm);
+      final stat = await file.stat();
+      final name = p.basename(norm);
+      nextItems.add(
+        SelectedShareItem(
+          id: _shareId(nextItems.length),
+          path: norm,
+          name: name,
+          isDirectory: false,
+          files: [
+            TransferFileEntry(
+              sourcePath: norm,
+              relativePath: name,
+              name: name,
+              sizeBytes: stat.size,
+              topLevelName: name,
+              isTopLevelDirectory: false,
+            ),
+          ],
+        ),
+      );
+    }
+  }
+  appShareItems.value = nextItems;
 }
 
 TransferSelection currentSelection() {

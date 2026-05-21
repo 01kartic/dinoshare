@@ -30,6 +30,7 @@ class _ShareState extends State<Share> {
   @override
   void dispose() {
     appShareItems.removeListener(_onItemsChanged);
+    appShareItems.value = [];
     super.dispose();
   }
 
@@ -267,6 +268,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet>
         Navigator.of(context).pop();
         Navigator.of(widget.parentContext).pushReplacement(
           CupertinoPageRoute(
+            settings: const RouteSettings(name: 'transfer'),
             builder: (_) => Transfer(role: TransferRole.sending),
           ),
         );

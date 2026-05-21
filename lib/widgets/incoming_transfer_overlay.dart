@@ -62,6 +62,7 @@ class _IncomingTransferOverlayState extends State<IncomingTransferOverlay> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         CupertinoPageRoute(
+          settings: const RouteSettings(name: 'transfer'),
           builder: (_) => Transfer(role: TransferRole.receiving),
         ),
       );

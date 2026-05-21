@@ -7,8 +7,11 @@ import 'package:macos_window_utils/macos_window_utils.dart';
 
 import 'pages/home.dart';
 import 'pages/onboarding.dart';
+import 'pages/share.dart';
+import 'state/drop_route_observer.dart';
 import 'state/state_index.dart';
 import 'style/theme.dart';
+import 'widgets/desktop_drop_overlay.dart';
 import 'widgets/incoming_transfer_overlay.dart';
 
 Future<void> main() async {
@@ -115,6 +118,7 @@ class _DinoshareAppState extends State<DinoshareApp>
             data: themeData,
             child: CupertinoApp(
               navigatorKey: _navigatorKey,
+              navigatorObservers: [dropRouteObserver],
               localizationsDelegates: const [
                 ...FLocalizations.localizationsDelegates,
               ],
@@ -124,12 +128,20 @@ class _DinoshareAppState extends State<DinoshareApp>
                   (context, child) => MediaQuery.removePadding(
                     removeTop: true,
                     context: context,
-                    child: IncomingTransferOverlay(
-                      child: SafeArea(
-                        top: false,
-                        left: false,
-                        right: false,
-                        child: child!,
+                      child: IncomingTransferOverlay(
+                        child: DesktopDropOverlay(
+                          onDropNavigate: () => _navigatorKey.currentState?.push(
+                            CupertinoPageRoute(
+                              settings: const RouteSettings(name: 'share'),
+                              builder: (_) => const Share(),
+                            ),
+                          ),
+                          child: SafeArea(
+                          top: false,
+                          left: false,
+                          right: false,
+                          child: child!,
+                        ),
                       ),
                     ),
                   ),

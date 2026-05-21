@@ -16,7 +16,7 @@ extension BonjourX on DinoshareTransferService {
         service: service,
         printLogs: kDebugMode,
       );
-      await _bonjourBroadcast!.ready;
+      await _bonjourBroadcast!.initialize();
       await _bonjourBroadcast!.start();
     } catch (e) {
       debugPrint('[Bonjour] Broadcast start failed: $e');
@@ -38,7 +38,7 @@ extension BonjourX on DinoshareTransferService {
         type: _kBonjourType,
         printLogs: kDebugMode,
       );
-      await _bonjourDiscovery!.ready;
+      await _bonjourDiscovery!.initialize();
       _bonjourDiscoverySub = _bonjourDiscovery!.eventStream!.listen(
         _handleBonjourEvent,
         onError: (e) => debugPrint('[Bonjour] Discovery stream error: $e'),
@@ -66,36 +66,32 @@ extension BonjourX on DinoshareTransferService {
   }
 
   void _handleBonjourEvent(BonsoirDiscoveryEvent event) {
-    if (event.type == BonsoirDiscoveryEventType.discoveryServiceFound) {
-      debugPrint('[Bonjour] Service found: ${event.service?.name}');
+    if (event is BonsoirDiscoveryServiceFoundEvent) {
+      debugPrint('[Bonjour] Service found: ${event.service.name}');
       try {
-        event.service?.resolve(_bonjourDiscovery!.serviceResolver);
+        event.service.resolve(_bonjourDiscovery!.serviceResolver);
       } catch (e) {
         debugPrint('[Bonjour] Resolve trigger failed: $e');
       }
-    } else if (event.type ==
-        BonsoirDiscoveryEventType.discoveryServiceResolved) {
+    } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
       final s = event.service;
-      if (s == null || s is! ResolvedBonsoirService) return;
       final attrs = s.attributes;
       final id = attrs['id'] ?? s.name;
       if (id == _deviceId) return;
       debugPrint(
-        '[Bonjour] Service resolved: ${s.name} host=${s.host} port=${s.port}',
+        '[Bonjour] Service resolved: ${s.name} host=${s.hostAddress ?? s.hostname} port=${s.port}',
       );
       _addBonjourPeer(
         id: id,
         name: s.name,
-        rawHost: s.host ?? '',
+        rawHost: s.hostAddress ?? s.hostname ?? '',
         port: s.port,
         deviceType: attrs['dtype'],
       );
-    } else if (event.type ==
-        BonsoirDiscoveryEventType.discoveryServiceResolveFailed) {
+    } else if (event is BonsoirDiscoveryServiceResolveFailedEvent) {
       debugPrint(
         '[Bonjour] Resolve failed for ${event.service?.name} — retrying',
       );
-      // Retry resolution after a short delay
       Future.delayed(const Duration(seconds: 2), () {
         if (_bonjourDiscovery != null && event.service != null) {
           try {
@@ -103,11 +99,9 @@ extension BonjourX on DinoshareTransferService {
           } catch (_) {}
         }
       });
-    } else if (event.type == BonsoirDiscoveryEventType.discoveryServiceLost) {
+    } else if (event is BonsoirDiscoveryServiceLostEvent) {
       final s = event.service;
-      if (s == null) return;
-      final attrs =
-          (s is ResolvedBonsoirService) ? s.attributes : <String, String>{};
+      final attrs = s.attributes;
       final id = attrs['id'] ?? s.name;
       debugPrint('[Bonjour] Service lost: ${s.name}');
       _bonjourPeerIds.remove(id);

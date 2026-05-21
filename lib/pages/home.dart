@@ -108,6 +108,7 @@ class _HomeState extends State<Home> {
                                         if (appShareItems.value.isEmpty) return;
                                         Navigator.of(context).push(
                                           CupertinoPageRoute(
+                                            settings: const RouteSettings(name: 'share'),
                                             builder: (_) => const Share(),
                                           ),
                                         );
@@ -125,6 +126,7 @@ class _HomeState extends State<Home> {
                                 onPressed:
                                     () => Navigator.of(context).push(
                                       CupertinoPageRoute(
+                                        settings: const RouteSettings(name: 'receive'),
                                         builder: (_) => const Receive(),
                                       ),
                                     ),
