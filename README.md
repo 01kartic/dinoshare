@@ -2,7 +2,11 @@
 
 # <p align="center">DinoShare</p>
 
-<p align="center"><a href="https://github.com/karticme/dinoshare">GitHub</a></p>
+<p align="center">
+  <a href="https://github.com/karticme/dinoshare">
+    <img src="https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
+  </a>
+</p>
 
 DinoShare is a free, open-source, cross-platform application that enables secure file and text sharing between nearby devices over a local network with no internet connection or central server required.
 
@@ -21,7 +25,7 @@ It also includes practical extras for everyday use: drag and drop on desktop, cl
 
 ## Glimpses
 
-![Transfer screenshot placeholder](./assets/screenshots/transfer-placeholder.png)
+<img src="https://framerusercontent.com/images/ZYQ7AcJZtjQurpAKR9IWHxqz2Y.png" height="600" alt="Mobile" /> <img src="https://framerusercontent.com/images/cRzc1LkwVNJQmvu8OwPwEfsRHM.png" height="512" alt="Desktop" />
 
 ## Download
 
